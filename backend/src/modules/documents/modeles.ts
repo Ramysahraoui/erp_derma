@@ -101,7 +101,7 @@ const badgeStatut = (statut: string): string => {
       : ['REJETE', 'BLOQUE', 'ANNULE', 'NON_PAYEE'].includes(statut)
         ? 'ko'
         : 'neutre';
-  return `<span class="badge ${classe}">${echapper(statut)}</span>`;
+  return `<span class="badge ${classe}">${echapper(String(statut).replaceAll('_', ' '))}</span>`;
 };
 
 // ---------------------------------------------------------------------
@@ -212,11 +212,11 @@ export function modeleFicheSuiveuse(dossier: any): string {
     <h2>Etape 2 — Controle de liberation du vrac</h2>
     <table>
       <tr><th style="width:22%">pH mesure</th><td>${dossier.ph_mesure ?? '—'} ${dossier.ph_min != null ? `<span class="societe">(intervalle ${dossier.ph_min} – ${dossier.ph_max})</span>` : ''}</td>
-          <th style="width:22%">Viscosite</th><td>${dossier.viscosite_mesuree ?? '—'} mPa·s ${dossier.viscosite_min != null ? `<span class="societe">(${dossier.viscosite_min} – ${dossier.viscosite_max})</span>` : ''}</td></tr>
+          <th style="width:22%">Viscosite</th><td>${dossier.viscosite_mesuree ? Number(dossier.viscosite_mesuree).toLocaleString('fr-FR') : '—'} mPa·s ${dossier.viscosite_min != null ? `<span class="societe">(${Number(dossier.viscosite_min).toLocaleString('fr-FR')} – ${Number(dossier.viscosite_max).toLocaleString('fr-FR')})</span>` : ''}</td></tr>
       <tr><th>Aspect</th><td>${echapper(dossier.aspect ?? '—')}</td><th>Couleur</th><td>${echapper(dossier.couleur ?? '—')}</td></tr>
       <tr><th>Odeur</th><td>${echapper(dossier.odeur ?? '—')}</td><th>Organoleptique</th><td>${dossier.conforme_organoleptique === null || dossier.conforme_organoleptique === undefined ? '—' : dossier.conforme_organoleptique ? badgeStatut('CONFORME') : badgeStatut('REJETE')}</td></tr>
       <tr><th>Decision</th><td>${badgeStatut(dossier.statut_vrac ?? 'EN_COURS')}</td>
-          <th>Liberation</th><td>${echapper(dossier.libere_par_nom ?? '—')} — ${dateHeureFr(dossier.libere_le)}</td></tr>
+          <th>Liberation</th><td>${dossier.libere_le ? `${echapper(dossier.libere_par_nom ?? '')} — ${dateHeureFr(dossier.libere_le)}` : 'Non liberee'}</td></tr>
     </table>
     <h2>Etape 3 — Conditionnement</h2>
     <table>

@@ -783,6 +783,7 @@ export async function propositionFefoLigne(db: Db, ofId: number, ligneId: number
       dluo: lot.dluo,
       emplacement: lot.emplacement,
       disponible_g: q3(disponibleG),
+      disponible_unite_stock: q3(lot.qte_actuelle),
       a_prelever_g: q3(prise),
       a_prelever_unite_stock: q3(prise.dividedBy(grammesParUnite)),
       unite: ligne.unite,

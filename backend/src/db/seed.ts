@@ -1,9 +1,66 @@
 import type pg from 'pg';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { queryOne } from './pool.js';
+import { env } from '../env.js';
 import { hacher } from '../core/auth.js';
 import { PARAMETRES_DEFAUT } from '../core/parametres.js';
-import { creerReception } from '../modules/stock/service.js';
+import { creerReception, type LigneReception } from '../modules/stock/service.js';
 import { remplacerLignes } from '../modules/formules/service.js';
+
+
+/**
+ * Genere un certificat d'analyse de demonstration (PDF minimal valide) pour
+ * accompagner les lots du jeu de donnees : sans CoA, un lot ne peut pas etre
+ * declare conforme.
+ */
+function ecrireCertificat(codeLotFournisseur: string, designation: string): string {
+  const echappe = (t: string) => t.replace(/[\\()]/g, '\\$&');
+  const lignes = [
+    `Fournisseur : lot ${codeLotFournisseur}`,
+    `Produit : ${designation}`,
+    'Aspect : conforme a la specification',
+    'Identification (IR) : conforme',
+    'Teneur en eau : conforme',
+    'Controle microbiologique : conforme',
+    '',
+    'Document de demonstration genere par le systeme.',
+  ];
+  const contenu = [
+    `BT /F1 16 Tf 60 780 Td (${echappe("CERTIFICAT D'ANALYSE")}) Tj ET`,
+    ...lignes.map((l, i) => `BT /F1 11 Tf 60 ${740 - i * 18} Td (${echappe(l)}) Tj ET`),
+  ].join('\n');
+  const objets = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${Buffer.byteLength(contenu, 'latin1')} >>\nstream\n${contenu}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let pdf = '%PDF-1.4\n';
+  const decalages: number[] = [];
+  objets.forEach((objet, i) => {
+    decalages.push(Buffer.byteLength(pdf, 'latin1'));
+    pdf += `${i + 1} 0 obj\n${objet}\nendobj\n`;
+  });
+  const xref = Buffer.byteLength(pdf, 'latin1');
+  pdf += `xref\n0 ${objets.length + 1}\n0000000000 65535 f \n`;
+  for (const decalage of decalages) pdf += `${String(decalage).padStart(10, '0')} 00000 n \n`;
+  pdf += `trailer\n<< /Size ${objets.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+
+  const nom = `coa-${codeLotFournisseur.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`;
+  mkdirSync(env.uploadDir, { recursive: true });
+  writeFileSync(path.join(env.uploadDir, nom), Buffer.from(pdf, 'latin1'));
+  return nom;
+}
+
+/** Complete chaque ligne de reception par son certificat d'analyse. */
+function avecCertificats(lignes: LigneReception[], designations: Map<number, string>): LigneReception[] {
+  return lignes.map((l) => ({
+    ...l,
+    coa_fichier: ecrireCertificat(l.code_lot_fournisseur ?? 'lot', designations.get(l.article_id) ?? 'Matiere'),
+  }));
+}
 
 const dansNJours = (n: number) => {
   const date = new Date();
@@ -64,6 +121,7 @@ export async function semer(client: pg.PoolClient, log: (m: string) => void = co
 
   // -------------------------------- Articles --------------------------
   const art: Record<string, number> = {};
+  const designations = new Map<number, string>();
   const creerArticle = async (
     sku: string, designation: string, type: 'MP' | 'AC' | 'PF', unite: string,
     extra: { inci?: string; seuil?: number; prix?: number; contenance?: number; densite?: number } = {},
@@ -76,6 +134,7 @@ export async function semer(client: pg.PoolClient, log: (m: string) => void = co
        extra.contenance ?? null, extra.densite ?? null],
     );
     art[sku] = a!.id;
+    designations.set(a!.id, designation);
   };
 
   await creerArticle('MP-EAU-001', 'Eau purifiee osmosee', 'MP', 'kg', { inci: 'Aqua', seuil: 200, densite: 1 });
@@ -194,7 +253,7 @@ export async function semer(client: pg.PoolClient, log: (m: string) => void = co
   await creerReception(
     client, adminId,
     { fournisseur_id: fournisseurs['FRN-CHIM'], reference_bl_fournisseur: 'BL-2026-1187', commentaire: 'Approvisionnement initial matieres premieres' },
-    [
+    avecCertificats([
       { article_id: art['MP-EAU-001'], quantite: 1500, code_lot_fournisseur: 'EAU-A1', dluo: dansNJours(720), prix_achat_unitaire: 35, frais_approche_unitaire: 2, statut: 'CONFORME' },
       { article_id: art['MP-GLY-002'], quantite: 300, code_lot_fournisseur: 'GLY-7741', dluo: dansNJours(540), prix_achat_unitaire: 420, frais_approche_unitaire: 18, statut: 'CONFORME' },
       { article_id: art['MP-HUJ-003'], quantite: 120, code_lot_fournisseur: 'JOJ-2291', dluo: dansNJours(365), prix_achat_unitaire: 2600, frais_approche_unitaire: 120, statut: 'CONFORME' },
@@ -203,18 +262,18 @@ export async function semer(client: pg.PoolClient, log: (m: string) => void = co
       { article_id: art['MP-GOM-010'], quantite: 25, code_lot_fournisseur: 'XAN-8820', dluo: dansNJours(500), prix_achat_unitaire: 2100, statut: 'CONFORME' },
       { article_id: art['MP-ACL-011'], quantite: 15, code_lot_fournisseur: 'LAC-1120', dluo: dansNJours(700), prix_achat_unitaire: 980, statut: 'CONFORME' },
       { article_id: art['MP-ALO-012'], quantite: 80, code_lot_fournisseur: 'ALO-4417', dluo: dansNJours(300), prix_achat_unitaire: 1150, statut: 'CONFORME' },
-    ],
+    ], designations),
   );
 
   await creerReception(
     client, adminId,
     { fournisseur_id: fournisseurs['FRN-ACTF'], reference_bl_fournisseur: 'BL-ACT-0921', commentaire: 'Actifs sensibles — quarantaine jusqu a analyse' },
-    [
+    avecCertificats([
       { article_id: art['MP-ACH-006'], quantite: 12, code_lot_fournisseur: 'HYA-9031', dluo: dansNJours(240), prix_achat_unitaire: 18500, frais_approche_unitaire: 900, statut: 'CONFORME' },
       { article_id: art['MP-VTE-007'], quantite: 8, code_lot_fournisseur: 'TOC-6612', dluo: dansNJours(330), prix_achat_unitaire: 7400, statut: 'CONFORME' },
       { article_id: art['MP-CON-008'], quantite: 20, code_lot_fournisseur: 'PHE-2203', dluo: dansNJours(450), prix_achat_unitaire: 3100, statut: 'CONFORME' },
       { article_id: art['MP-PAR-009'], quantite: 10, code_lot_fournisseur: 'PAR-7788', dluo: dansNJours(365), prix_achat_unitaire: 9200, statut: 'CONFORME' },
-    ],
+    ], designations),
   );
 
   // Reception en attente de certificat d'analyse : lots bloques en quarantaine,
@@ -222,16 +281,16 @@ export async function semer(client: pg.PoolClient, log: (m: string) => void = co
   await creerReception(
     client, adminId,
     { fournisseur_id: fournisseurs['FRN-CHIM'], reference_bl_fournisseur: 'BL-2026-1204', commentaire: 'En attente du certificat d analyse fournisseur' },
-    [
+    ([
       { article_id: art['MP-GLY-002'], quantite: 100, code_lot_fournisseur: 'GLY-7802', dluo: dansNJours(560), prix_achat_unitaire: 435, frais_approche_unitaire: 18, statut: 'QUARANTAINE' },
       { article_id: art['MP-ALO-012'], quantite: 40, code_lot_fournisseur: 'ALO-4498', dluo: dansNJours(320), prix_achat_unitaire: 1180, statut: 'QUARANTAINE' },
-    ],
+    ] as LigneReception[]).map((l) => ({ ...l, coa_absent_motif: 'Certificat d analyse annonce par le fournisseur sous 48 h' })),
   );
 
   await creerReception(
     client, adminId,
     { fournisseur_id: fournisseurs['FRN-PACK'], reference_bl_fournisseur: 'BL-PCK-4471', commentaire: 'Articles de conditionnement' },
-    [
+    avecCertificats([
       { article_id: art['AC-FLA-050'], quantite: 6000, code_lot_fournisseur: 'FL50-A', prix_achat_unitaire: 62, frais_approche_unitaire: 4, statut: 'CONFORME' },
       { article_id: art['AC-POM-050'], quantite: 6000, code_lot_fournisseur: 'PMP-77', prix_achat_unitaire: 45, statut: 'CONFORME' },
       { article_id: art['AC-ETI-050'], quantite: 12000, code_lot_fournisseur: 'ETQ-2026-1', prix_achat_unitaire: 8, statut: 'CONFORME' },
@@ -239,7 +298,7 @@ export async function semer(client: pg.PoolClient, log: (m: string) => void = co
       { article_id: art['AC-POT-100'], quantite: 2500, code_lot_fournisseur: 'POT-100-B', prix_achat_unitaire: 88, statut: 'CONFORME' },
       { article_id: art['AC-OPE-100'], quantite: 2500, code_lot_fournisseur: 'OPE-441', prix_achat_unitaire: 6, statut: 'CONFORME' },
       { article_id: art['AC-CAR-EXP'], quantite: 800, code_lot_fournisseur: 'CAR-12U', prix_achat_unitaire: 95, statut: 'CONFORME' },
-    ],
+    ], designations),
   );
   log('[seed] 4 receptions enregistrees, lots internes generes (dont 2 lots en quarantaine)');
 

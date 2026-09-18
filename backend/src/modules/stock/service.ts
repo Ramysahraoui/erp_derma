@@ -13,6 +13,7 @@ export interface LigneReception {
   prix_achat_unitaire: number;
   frais_approche_unitaire?: number;
   coa_fichier?: string | null;
+  coa_absent_motif?: string | null;
   emplacement?: string | null;
   statut?: 'QUARANTAINE' | 'CONFORME';
   commentaire?: string | null;
@@ -73,19 +74,30 @@ export async function creerReception(
         422,
       );
     }
+    // Certificat d'analyse obligatoire : a defaut, le motif est exige et le lot
+    // reste en quarantaine jusqu'a reception du document.
+    if (!l.coa_fichier && !l.coa_absent_motif?.trim()) {
+      throw new ErreurMetier(
+        'COA_MANQUANT',
+        `Certificat d'analyse obligatoire pour ${article.code_sku}. ` +
+          "Joindre le document (PDF ou image) ou motiver son absence (le lot restera en quarantaine).",
+        422,
+      );
+    }
+    const statutEntree = l.coa_fichier ? (l.statut ?? 'QUARANTAINE') : 'QUARANTAINE';
     const codeLot = await genererNumero(client, prefixeLotParType(article.type));
     const lot = await queryOne(
       client,
       `INSERT INTO lots_stock
          (article_id, code_lot_interne, code_lot_fournisseur, reception_id, fournisseur_id,
           qte_initiale, qte_actuelle, statut, dluo, date_reception, prix_achat_unitaire,
-          frais_approche_unitaire, coa_fichier, emplacement, commentaire, cree_par)
-       VALUES ($1,$2,$3,$4,$5,$6,0,$7,$8,COALESCE($9::date,CURRENT_DATE),$10,$11,$12,$13,$14,$15)
+          frais_approche_unitaire, coa_fichier, coa_absent_motif, emplacement, commentaire, cree_par)
+       VALUES ($1,$2,$3,$4,$5,$6,0,$7,$8,COALESCE($9::date,CURRENT_DATE),$10,$11,$12,$13,$14,$15,$16)
        RETURNING *`,
       [article.id, codeLot, l.code_lot_fournisseur ?? null, reception!.id, entete.fournisseur_id ?? null,
-       q3(l.quantite), l.statut ?? 'QUARANTAINE', l.dluo ?? null, entete.date_reception ?? null,
+       q3(l.quantite), statutEntree, l.dluo ?? null, entete.date_reception ?? null,
        p4(l.prix_achat_unitaire), p4(l.frais_approche_unitaire ?? 0), l.coa_fichier ?? null,
-       l.emplacement ?? null, l.commentaire ?? null, utilisateurId],
+       l.coa_absent_motif ?? null, l.emplacement ?? null, l.commentaire ?? null, utilisateurId],
     );
     await client.query(
       `INSERT INTO mouvements_stock (lot_stock_id, type_mouvement, quantite, cout_unitaire, reception_id, motif, utilisateur_id)
@@ -115,6 +127,16 @@ export async function changerStatutLot(
   if (lot.statut === statut) return lot;
   if (lot.statut === 'REJETE') {
     throw new ErreurMetier('LOT_REJETE', 'Un lot rejete ne peut pas etre remis en circulation.', 422);
+  }
+  if (statut === 'CONFORME' && !lot.coa_fichier) {
+    const article = await queryOne(db, 'SELECT type, code_sku FROM articles_catalogue WHERE id = $1', [lot.article_id]);
+    if (article && ['MP', 'AC'].includes(article.type)) {
+      throw new ErreurMetier(
+        'COA_MANQUANT',
+        `Liberation impossible : aucun certificat d'analyse n'est joint au lot ${lot.code_lot_interne} (${article.code_sku}).`,
+        422,
+      );
+    }
   }
   const maj = await queryOne(
     db,

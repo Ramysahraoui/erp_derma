@@ -4,7 +4,7 @@ Les six scenarios du cahier des charges sont automatises et rejoues a chaque
 execution de la suite de tests.
 
 ```bash
-npm test          # 36 tests, dont les 6 scenarios de recette
+npm test          # 37 tests, dont les 6 scenarios de recette
 ```
 
 La suite recree integralement la base de test, applique les migrations, injecte
@@ -56,7 +56,10 @@ limitant et du volume maximal possible.
 - l'affectation forcee par appel direct a l'API est refusee
   (**422 `PESEE_LOT_NON_CONFORME`**, trigger `fn_pesee_lot_valide`) ;
 - un operateur de production ne peut pas liberer le lot lui-meme (**403**) ;
-- apres liberation par la qualite, le lot redevient disponible a la pesee.
+- la liberation est refusee tant que le certificat d'analyse n'est pas joint
+  (**422 `COA_MANQUANT`**) ;
+- certificat depose puis liberation par la qualite : le lot redevient disponible
+  a la pesee.
 
 ## TEST-04 — BL depassant le plafond de credit
 
@@ -112,6 +115,7 @@ les lots de PF generes et la liste nominative des clients livres.
 | FEFO | Service des lots par peremption croissante, couverture complete |
 | Tolerance de pesee | Refus a +5 %, forcage interdit a l'operateur, acceptation qualite tracee et marquee non conforme |
 | Cloture d'OF | Fabrication bloquee tant qu'une pesee manque ; `UPDATE` SQL direct refuse par le trigger |
+| Certificat d'analyse | Reception sans CoA ni motif refusee ; reception motivee forcee en quarantaine ; liberation refusee (API et SQL direct) ; possible apres depot du document |
 | Audit trail | `DELETE` refuse sur mouvements, pesees, lots, OF, vracs ; `UPDATE` d'un mouvement refuse |
 | Lot de PF | Creation impossible sans lot de vrac libere |
 | CRU | Coherence somme des composantes / unites produites ; main d'oeuvre au taux parametre ; lot de PF valorise au cout reel |

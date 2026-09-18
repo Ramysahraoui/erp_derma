@@ -26,11 +26,12 @@ avec un statut HTTP explicite (401 non authentifie, 403 privilege insuffisant,
 | Methode | Route | Permission | Objet |
 |---|---|---|---|
 | POST | `/fichiers` | `stock:receptionner` | Televersement d'un CoA (PDF/image, 12 Mo) |
-| POST | `/receptions` | `stock:receptionner` | Reception multi-lignes, genere les lots internes |
+| POST | `/receptions` | `stock:receptionner` | Reception multi-lignes, genere les lots internes. `coa_fichier` **obligatoire**, sinon `coa_absent_motif` (le lot est force en quarantaine) |
 | GET | `/receptions` `/receptions/:id` | `stock:lire` | Historique et detail |
 | GET | `/lots` | `stock:lire` | Filtres `article_id`, `statut`, `type`, `recherche`, `disponible`, `peremption_avant` |
 | GET | `/lots/:id` | `stock:lire` | Lot et historique complet des mouvements |
-| POST | `/lots/:id/statut` | `stock:liberer` | Liberation, blocage, rejet (motif trace) |
+| POST | `/lots/:id/statut` | `stock:liberer` | Liberation, blocage, rejet (motif trace). Refus **422 `COA_MANQUANT`** sans certificat |
+| POST | `/lots/:id/coa` | `stock:receptionner` | Depot differe du certificat d'analyse |
 | POST | `/lots/:id/ajustement` | `stock:ajuster` | Correction signee, motif obligatoire |
 | GET | `/stock/fefo` | `stock:lire` | Proposition d'allocation FEFO (`article_id`, `quantite`) |
 | GET | `/stock/etat` | `stock:lire` | Etat des stocks par article |

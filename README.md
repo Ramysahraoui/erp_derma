@@ -65,10 +65,18 @@ En production : `npm run build` puis `node backend/dist/server.js`, le dossier
 ## 3. Tests
 
 ```bash
-npm test            # 36 tests : recette fonctionnelle, regles metier, unitaires
+npm test            # 37 tests : recette fonctionnelle, regles metier, unitaires
 ```
 
-La suite reinitialise integralement une base dediee
+Un parcours de validation de l'interface (Chromium) est egalement fourni :
+
+```bash
+npm i -D playwright            # une fois
+npm run dev:api & npm run dev:web &
+npm run test:ui                # frontend/e2e/parcours.mjs
+```
+
+La suite de tests backend reinitialise integralement une base dediee
 (`DATABASE_URL=…/erp_derma_test`), rejoue les migrations, injecte le jeu de
 demonstration puis deroule des cycles industriels complets.
 Detail des scenarios de recette : `docs/RECETTE.md`.
@@ -84,6 +92,7 @@ Detail des scenarios de recette : `docs/RECETTE.md`.
 | Aucune sortie commerciale sans numero de lot de PF | Triggers `fn_ligne_bl_exige_lot` et `fn_controle_validation_bl` + refus API |
 | Cloture d'OF impossible sans pesees completes | Trigger `fn_controle_cloture_of` + verification applicative |
 | Consommation reservee aux lots conformes | Triggers `fn_mouvement_lot_conforme`, `fn_pesee_lot_valide` + filtrage FEFO de l'ecran de pesee |
+| Certificat d'analyse obligatoire a la reception | Refus API sans CoA ni motif ; trigger `fn_liberation_exige_coa` interdisant de declarer conforme un lot MP/AC sans document joint |
 
 ## 5. Organisation du depot
 

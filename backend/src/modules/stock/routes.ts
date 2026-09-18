@@ -5,6 +5,7 @@ import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { pool, query, queryOne, transaction } from '../../db/pool.js';
+import { tracer } from '../../core/audit.js';
 import { ErreurMetier, introuvable } from '../../core/erreurs.js';
 import { exige } from '../../core/auth.js';
 import { env } from '../../env.js';
@@ -18,6 +19,7 @@ const schemaLigneReception = z.object({
   prix_achat_unitaire: z.coerce.number().min(0),
   frais_approche_unitaire: z.coerce.number().min(0).default(0),
   coa_fichier: z.string().optional().nullable(),
+  coa_absent_motif: z.string().min(5, "Motiver l'absence de certificat d'analyse (5 caracteres minimum).").optional().nullable(),
   emplacement: z.string().optional().nullable(),
   statut: z.enum(['QUARANTAINE', 'CONFORME']).default('QUARANTAINE'),
   commentaire: z.string().optional().nullable(),
@@ -154,6 +156,20 @@ export async function routesStock(app: FastifyInstance): Promise<void> {
       })
       .parse(req.body);
     return changerStatutLot(pool, req.utilisateur.id, id, b.statut, b.motif);
+  });
+
+  // Ajout ou remplacement du certificat d'analyse d'un lot deja receptionne.
+  app.post('/lots/:id/coa', { preHandler: exige('stock:receptionner') }, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params);
+    const b = z.object({ coa_fichier: z.string().min(1) }).parse(req.body);
+    const lot = await queryOne(
+      pool,
+      `UPDATE lots_stock SET coa_fichier = $2, coa_absent_motif = NULL WHERE id = $1 RETURNING *`,
+      [id, b.coa_fichier],
+    );
+    if (!lot) throw introuvable('Lot', id);
+    await tracer(pool, req.utilisateur.id, 'AJOUT_COA', 'lots_stock', id, { coa_fichier: b.coa_fichier });
+    return lot;
   });
 
   app.post('/lots/:id/ajustement', { preHandler: exige('stock:ajuster') }, async (req) => {

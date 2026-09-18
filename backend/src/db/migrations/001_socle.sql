@@ -321,6 +321,9 @@ CREATE TABLE lots_stock (
   frais_approche_unitaire NUMERIC(16,4) NOT NULL DEFAULT 0 CHECK (frais_approche_unitaire >= 0),
   cout_unitaire        NUMERIC(16,4) GENERATED ALWAYS AS (prix_achat_unitaire + frais_approche_unitaire) STORED,
   coa_fichier          TEXT,
+  -- Le certificat d'analyse est exige a la reception. S'il n'est pas encore
+  -- fourni, le motif est obligatoire et le lot reste bloque en quarantaine.
+  coa_absent_motif     TEXT,
   emplacement          TEXT,
   commentaire          TEXT,
   statut_modifie_par   BIGINT REFERENCES utilisateurs(id),
@@ -364,6 +367,25 @@ END;
 $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_lot_pf_vrac BEFORE INSERT ON lots_stock
   FOR EACH ROW EXECUTE FUNCTION fn_lot_pf_exige_vrac();
+
+-- Liberation qualite impossible sans certificat d'analyse pour une matiere
+-- premiere ou un article de conditionnement (les produits finis sont couverts
+-- par leur dossier de lot).
+CREATE FUNCTION fn_liberation_exige_coa() RETURNS trigger AS $$
+DECLARE v_type type_article;
+BEGIN
+  IF NEW.statut = 'CONFORME' AND OLD.statut IS DISTINCT FROM 'CONFORME' THEN
+    SELECT type INTO v_type FROM articles_catalogue WHERE id = NEW.article_id;
+    IF v_type IN ('MP','AC') AND (NEW.coa_fichier IS NULL OR NEW.coa_fichier = '') THEN
+      RAISE EXCEPTION 'COA_MANQUANT: le lot % ne peut etre declare conforme sans certificat d''analyse joint.', NEW.code_lot_interne
+        USING ERRCODE = '23514';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER trg_liberation_coa BEFORE INSERT OR UPDATE ON lots_stock
+  FOR EACH ROW EXECUTE FUNCTION fn_liberation_exige_coa();
 
 -- Journal des mouvements : source de verite immuable du stock.
 CREATE TABLE mouvements_stock (

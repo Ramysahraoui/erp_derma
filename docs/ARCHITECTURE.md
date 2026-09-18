@@ -14,7 +14,11 @@
 3. **Aucune suppression sur la tracabilite.** Les corrections s'operent par
    ajustement motive ou contre-passation, conformement a l'exigence d'audit trail
    (BPF / ISO 22716).
-4. **Precision explicite.** Masses et quantites en `NUMERIC(16,3)`, prix unitaires
+4. **Le certificat d'analyse conditionne la liberation.** Une reception sans CoA
+   exige un motif ecrit et force la quarantaine ; le passage au statut conforme
+   d'un lot de MP ou d'AC est refuse tant que le document n'est pas joint
+   (trigger `fn_liberation_exige_coa`).
+5. **Precision explicite.** Masses et quantites en `NUMERIC(16,3)`, prix unitaires
    en `NUMERIC(16,4)`, montants de documents en `NUMERIC(18,2)`. Cote applicatif,
    `decimal.js` remplace l'arithmetique flottante ; les arrondis sont toujours
    explicites (`q3`, `p4`, `m2`).
@@ -27,7 +31,9 @@
 - `nomenclature_ac` — quantite d'articles de conditionnement par unite de PF.
 - `fournisseurs`, `receptions` — origine des entrees.
 - `lots_stock` — lot interne unique (`LOT-MP-AAAA-XXXXX`), lot fournisseur, DLUO,
-  statut qualite, cout unitaire genere (`prix_achat + frais_approche`), CoA.
+  statut qualite, cout unitaire genere (`prix_achat + frais_approche`), certificat
+  d'analyse (`coa_fichier`, ou `coa_absent_motif` si le document est annonce mais
+  non encore fourni : le lot reste alors bloque en quarantaine).
 - `mouvements_stock` — journal immuable (entree reception, sortie production,
   entree production, sortie vente, rebut, ajustement, annulation).
 

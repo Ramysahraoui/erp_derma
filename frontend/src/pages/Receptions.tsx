@@ -6,12 +6,13 @@ import { Alerte, AlerteErreur, Badge, Champ, Chargement, Modale, useChargement, 
 interface LigneSaisie {
   article_id: string; quantite: string; code_lot_fournisseur: string; dluo: string;
   prix_achat_unitaire: string; frais_approche_unitaire: string; statut: 'QUARANTAINE' | 'CONFORME';
-  coa_fichier: string | null; coa_nom: string | null; emplacement: string;
+  coa_fichier: string | null; coa_nom: string | null; coa_absent_motif: string; emplacement: string;
 }
 
 const ligneVide = (): LigneSaisie => ({
   article_id: '', quantite: '', code_lot_fournisseur: '', dluo: '', prix_achat_unitaire: '',
-  frais_approche_unitaire: '0', statut: 'QUARANTAINE', coa_fichier: null, coa_nom: null, emplacement: '',
+  frais_approche_unitaire: '0', statut: 'QUARANTAINE', coa_fichier: null, coa_nom: null,
+  coa_absent_motif: '', emplacement: '',
 });
 
 export function Receptions() {
@@ -90,8 +91,9 @@ function ModaleReception({ onFermer, onCree }: { onFermer: () => void; onCree: (
           dluo: l.dluo || null,
           prix_achat_unitaire: Number(l.prix_achat_unitaire || 0),
           frais_approche_unitaire: Number(l.frais_approche_unitaire || 0),
-          statut: l.statut,
+          statut: l.coa_fichier ? l.statut : 'QUARANTAINE',
           coa_fichier: l.coa_fichier,
+          coa_absent_motif: l.coa_fichier ? null : l.coa_absent_motif,
           emplacement: l.emplacement || null,
         })),
       });
@@ -108,8 +110,9 @@ function ModaleReception({ onFermer, onCree }: { onFermer: () => void; onCree: (
           {enCours ? 'Enregistrement…' : 'Enregistrer la reception'}</button></>}>
       <AlerteErreur erreur={erreur} />
       <Alerte type="info">
-        Chaque ligne genere un numero de lot interne unique. Les lots entrent par defaut en quarantaine :
-        seul le responsable qualite peut les liberer apres controle du certificat d'analyse.
+        Chaque ligne genere un numero de lot interne unique. Le certificat d'analyse est obligatoire :
+        a defaut, son absence doit etre motivee et le lot reste bloque en quarantaine jusqu'a reception
+        du document. Seul le responsable qualite peut ensuite liberer le lot.
       </Alerte>
       <div className="ligne-champs">
         <Champ libelle="Fournisseur">
@@ -160,15 +163,24 @@ function ModaleReception({ onFermer, onCree }: { onFermer: () => void; onCree: (
                 <input value={l.emplacement} onChange={(e) => majLigne(i, 'emplacement', e.target.value)} placeholder="Magasin A / Rayon 3" />
               </Champ>
               <Champ libelle="Statut a l'entree">
-                <select value={l.statut} onChange={(e) => majLigne(i, 'statut', e.target.value)}>
+                <select value={l.coa_fichier ? l.statut : 'QUARANTAINE'} disabled={!l.coa_fichier}
+                  onChange={(e) => majLigne(i, 'statut', e.target.value)}>
                   <option value="QUARANTAINE">Quarantaine (controle a venir)</option>
                   <option value="CONFORME">Conforme (CoA valide)</option>
                 </select>
+                {!l.coa_fichier && <span className="aide">Liberation impossible sans certificat d'analyse.</span>}
               </Champ>
-              <Champ libelle="Certificat d'analyse (PDF / image)">
+              <Champ libelle="Certificat d'analyse (PDF / image)" obligatoire>
                 <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={(e) => televerser(i, e.target.files?.[0])} />
                 {l.coa_nom && <span className="aide">Joint : {l.coa_nom}</span>}
               </Champ>
+              {!l.coa_fichier && (
+                <Champ libelle="Motif d'absence du certificat" obligatoire
+                  aide="Le lot restera en quarantaine jusqu'a reception du document">
+                  <input value={l.coa_absent_motif} onChange={(e) => majLigne(i, 'coa_absent_motif', e.target.value)}
+                    placeholder="CoA annonce par le fournisseur sous 48 h" />
+                </Champ>
+              )}
             </div>
             {lignes.length > 1 && (
               <div className="actions" style={{ marginTop: 10 }}>

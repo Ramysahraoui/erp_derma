@@ -45,6 +45,7 @@ const CODES_METIER = [
   'AUDIT_TRAIL_SUPPRESSION_INTERDITE',
   'AUDIT_TRAIL_MODIFICATION_INTERDITE',
   'LOT_INTROUVABLE',
+  'COA_MANQUANT',
 ] as const;
 
 export function traduireErreurPg(err: unknown): ErreurMetier | null {

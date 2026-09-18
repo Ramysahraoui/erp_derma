@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, fmtDate, fmtDateHeure, fmtMontant, fmtNombre } from '../api';
 import { useAuth } from '../auth';
-import { AlerteErreur, Badge, Champ, Chargement, Modale, useChargement, Vide } from '../composants/Ui';
+import { Alerte, AlerteErreur, Badge, Champ, Chargement, Modale, useChargement, Vide } from '../composants/Ui';
 
 export function Lots() {
   const { peut } = useAuth();
@@ -119,8 +119,32 @@ function ModaleLot({ id, onFermer, onMaj, peutLiberer, peutAjuster }: {
         {l.code_lot_vrac && <><dt>Lot de vrac d'origine</dt><dd>{l.code_lot_vrac}</dd></>}
         <dt>Cout unitaire</dt><dd>{fmtMontant(l.cout_unitaire)}</dd>
         <dt>Certificat d'analyse</dt>
-        <dd>{l.coa_fichier ? <a href={`/fichiers/${l.coa_fichier}`} target="_blank" rel="noreferrer">Consulter</a> : 'Non joint'}</dd>
+        <dd>
+          {l.coa_fichier
+            ? <a href={`/fichiers/${l.coa_fichier}`} target="_blank" rel="noreferrer">Consulter</a>
+            : <span style={{ color: 'var(--danger)' }}>Non joint{l.coa_absent_motif ? ` — ${l.coa_absent_motif}` : ''}</span>}
+        </dd>
       </dl>
+
+      {!l.coa_fichier && ['MP', 'AC'].includes(l.type) && (
+        <Alerte type="attention" titre="Certificat d'analyse manquant">
+          Ce lot ne peut pas etre declare conforme tant que le certificat d'analyse n'est pas joint.
+          {peutLiberer && (
+            <div style={{ marginTop: 8 }}>
+              <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={async (e) => {
+                const fichier = e.target.files?.[0];
+                if (!fichier) return;
+                setErreur(null);
+                try {
+                  const televerse = await api.televerser(fichier);
+                  await api.post(`/lots/${id}/coa`, { coa_fichier: televerse.fichier });
+                  detail.recharger(); onMaj();
+                } catch (err) { setErreur(err); }
+              }} />
+            </div>
+          )}
+        </Alerte>
+      )}
 
       {(peutLiberer || peutAjuster) && l.statut !== 'REJETE' && (
         <>

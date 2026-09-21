@@ -4,7 +4,7 @@ import path from 'node:path';
 import { queryOne } from './pool.js';
 import { env } from '../env.js';
 import { hacher } from '../core/auth.js';
-import { PARAMETRES_DEFAUT } from '../core/parametres.js';
+import { amorcer } from './amorcage.js';
 import { creerReception, type LigneReception } from '../modules/stock/service.js';
 import { remplacerLignes } from '../modules/formules/service.js';
 
@@ -69,22 +69,20 @@ const dansNJours = (n: number) => {
 };
 
 /**
- * Jeu de donnees de demonstration : referentiel complet d'une unite de
- * fabrication dermo-cosmetique (utilisateurs, articles, formules, stock).
+ * Jeu de donnees de DEMONSTRATION — a n'utiliser qu'en formation ou en recette.
+ *
+ * Il injecte des articles, formules, lots, clients et comptes fictifs. Une
+ * installation de production s'amorce avec `amorcer()` (parametres, plan
+ * analytique, compte administrateur) et reste vierge de toute donnee simulee.
  */
-export async function semer(client: pg.PoolClient, log: (m: string) => void = console.log): Promise<void> {
+export async function semerDemonstration(client: pg.PoolClient, log: (m: string) => void = console.log): Promise<void> {
   const existant = await queryOne<{ n: number }>(client, 'SELECT COUNT(*)::int AS n FROM utilisateurs');
   if (existant && existant.n > 0) {
-    log('[seed] base deja peuplee, aucune action.');
+    log('[demonstration] base deja peuplee, aucune action.');
     return;
   }
 
-  for (const [cle, def] of Object.entries(PARAMETRES_DEFAUT)) {
-    await client.query(
-      'INSERT INTO parametres (cle, valeur, libelle) VALUES ($1,$2,$3) ON CONFLICT (cle) DO NOTHING',
-      [cle, def.valeur, def.libelle],
-    );
-  }
+  await amorcer(client, {}, () => {});
 
   // ------------------------------ Utilisateurs ------------------------
   const utilisateurs = [
@@ -96,15 +94,17 @@ export async function semer(client: pg.PoolClient, log: (m: string) => void = co
   ] as const;
   const motDePasse = await hacher('Derma2026!');
   let adminId = 0;
+  await client.query('DELETE FROM utilisateurs');
   for (const [email, nom, role] of utilisateurs) {
     const u = await queryOne(
       client,
-      'INSERT INTO utilisateurs (email, mot_de_passe, nom_complet, role) VALUES ($1,$2,$3,$4) RETURNING id',
+      `INSERT INTO utilisateurs (email, mot_de_passe, nom_complet, role, doit_changer_mot_de_passe)
+       VALUES ($1,$2,$3,$4,FALSE) RETURNING id`,
       [email, motDePasse, nom, role],
     );
     if (role === 'ADMIN') adminId = u!.id;
   }
-  log('[seed] 5 utilisateurs crees (mot de passe : Derma2026!)');
+  log('[demonstration] 5 utilisateurs crees (mot de passe : Derma2026!)');
 
   // ------------------------------ Fournisseurs ------------------------
   const fournisseurs: Record<string, number> = {};
@@ -161,7 +161,7 @@ export async function semer(client: pg.PoolClient, log: (m: string) => void = co
   await creerArticle('PF-CRH-050', 'Creme hydratante visage 50 ml', 'PF', 'U', { prix: 1850, contenance: 50, seuil: 100 });
   await creerArticle('PF-SER-050', 'Serum acide hyaluronique 50 ml', 'PF', 'U', { prix: 3200, contenance: 50, seuil: 60 });
   await creerArticle('PF-BAU-100', 'Baume reparateur 100 ml', 'PF', 'U', { prix: 2400, contenance: 100, seuil: 50 });
-  log('[seed] 22 articles crees (12 MP, 7 AC, 3 PF)');
+  log('[demonstration] 22 articles crees (12 MP, 7 AC, 3 PF)');
 
   // --------------------------- Nomenclatures AC -----------------------
   const nomenclature: [string, [string, number][]][] = [
@@ -247,7 +247,7 @@ export async function semer(client: pg.PoolClient, log: (m: string) => void = co
       })),
     );
   }
-  log('[seed] 3 formules validees (somme ponderale = 100,000 %)');
+  log('[demonstration] 3 formules validees (somme ponderale = 100,000 %)');
 
   // ------------------------- Receptions et stock ----------------------
   await creerReception(
@@ -300,7 +300,7 @@ export async function semer(client: pg.PoolClient, log: (m: string) => void = co
       { article_id: art['AC-CAR-EXP'], quantite: 800, code_lot_fournisseur: 'CAR-12U', prix_achat_unitaire: 95, statut: 'CONFORME' },
     ], designations),
   );
-  log('[seed] 4 receptions enregistrees, lots internes generes (dont 2 lots en quarantaine)');
+  log('[demonstration] 4 receptions enregistrees, lots internes generes (dont 2 lots en quarantaine)');
 
   // --------------------------------- Clients --------------------------
   const clients: [string, string, number, number, string][] = [
@@ -317,22 +317,6 @@ export async function semer(client: pg.PoolClient, log: (m: string) => void = co
     );
   }
 
-  // ------------------------ Categories de depenses --------------------
-  const categories: [string, string, 'DIRECTE' | 'INDIRECTE'][] = [
-    ['LABO', 'Fournitures de laboratoire', 'DIRECTE'],
-    ['CONSO', 'Consommables de production', 'DIRECTE'],
-    ['MAINT', 'Maintenance des machines', 'DIRECTE'],
-    ['ANALYSE', 'Analyses microbiologiques externes', 'DIRECTE'],
-    ['LOYER', 'Loyer usine', 'INDIRECTE'],
-    ['ENERGIE', 'Electricite et eau', 'INDIRECTE'],
-    ['TELECOM', 'Abonnements telecoms', 'INDIRECTE'],
-    ['CARBU', 'Carburant', 'INDIRECTE'],
-    ['COMMERCE', 'Frais de commercialisation', 'INDIRECTE'],
-  ];
-  for (const [code, libelle, type] of categories) {
-    await client.query('INSERT INTO depenses_categories (code, libelle, type) VALUES ($1,$2,$3)', [code, libelle, type]);
-  }
-
   // --------------------------------- Personnel ------------------------
   const salaries: [string, string, string, string, string, string, number, number][] = [
     ['MAT-001', 'Belkacem', 'Amine', 'Operateur formulation', 'PRODUCTION', 'CDI', 62000, 420],
@@ -347,6 +331,6 @@ export async function semer(client: pg.PoolClient, log: (m: string) => void = co
       [matricule, nom, prenom, fonction, departement, contrat, salaire, taux],
     );
   }
-  log('[seed] clients, categories de depenses et personnel crees');
-  log('[seed] Jeu de demonstration pret. Connexion : direction@derma.dz / Derma2026!');
+  log('[demonstration] clients et personnel crees');
+  log('[demonstration] Jeu de demonstration pret. Connexion : direction@derma.dz / Derma2026!');
 }

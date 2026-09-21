@@ -45,15 +45,18 @@ function Utilisateurs() {
         <div className="corps sans-marge tableau-conteneur">
           {liste.enCours && !liste.donnees ? <Chargement /> : (
             <table className="tableau">
-              <thead><tr><th>Nom</th><th>E-mail</th><th>Role</th><th>Cree le</th><th>Etat</th><th /></tr></thead>
+              <thead><tr><th>Nom</th><th>E-mail</th><th>Role</th><th>Derniere connexion</th><th>Etat</th><th /></tr></thead>
               <tbody>
                 {(liste.donnees ?? []).map((u: any) => (
                   <tr key={u.id}>
                     <td><strong>{u.nom_complet}</strong></td>
                     <td>{u.email}</td>
                     <td><Badge valeur={LIBELLES_ROLES[u.role as Role]} classe="info" /></td>
-                    <td>{fmtDate(u.cree_le)}</td>
-                    <td><Badge valeur={u.actif ? 'ACTIF' : 'DESACTIVE'} classe={u.actif ? 'succes' : 'danger'} /></td>
+                    <td>{u.derniere_connexion ? fmtDateHeure(u.derniere_connexion) : <span className="secondaire">Jamais connecte</span>}</td>
+                    <td>
+                      <Badge valeur={u.actif ? 'ACTIF' : 'DESACTIVE'} classe={u.actif ? 'succes' : 'danger'} />
+                      {u.doit_changer_mot_de_passe && <> <Badge valeur="MOT DE PASSE A CHANGER" classe="alerte" /></>}
+                    </td>
                     <td><button className="bouton petit" onClick={() => basculer(u.id, !u.actif)}>{u.actif ? 'Desactiver' : 'Reactiver'}</button></td>
                   </tr>
                 ))}
@@ -85,7 +88,7 @@ function ModaleUtilisateur({ onFermer, onCree }: { onFermer: () => void; onCree:
         <Champ libelle="E-mail" obligatoire><input type="email" value={form.email ?? ''} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Champ>
       </div>
       <div className="ligne-champs" style={{ marginTop: 12 }}>
-        <Champ libelle="Mot de passe" obligatoire aide="8 caracteres minimum">
+        <Champ libelle="Mot de passe provisoire" obligatoire aide="10 caracteres minimum">
           <input type="password" value={form.mot_de_passe ?? ''} onChange={(e) => setForm({ ...form, mot_de_passe: e.target.value })} />
         </Champ>
         <Champ libelle="Role" obligatoire>
@@ -97,6 +100,7 @@ function ModaleUtilisateur({ onFermer, onCree }: { onFermer: () => void; onCree:
       <Alerte type="info" titre="Cloisonnement des privileges">
         L'operateur de production n'accede ni aux couts, ni aux marges, ni aux clients. Seuls le responsable
         qualite et l'administrateur peuvent liberer un lot ou accepter une pesee hors tolerance.
+        Le mot de passe defini ici est provisoire : son titulaire devra le changer a sa premiere connexion.
       </Alerte>
     </Modale>
   );

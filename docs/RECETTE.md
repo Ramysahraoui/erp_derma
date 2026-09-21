@@ -4,7 +4,7 @@ Les six scenarios du cahier des charges sont automatises et rejoues a chaque
 execution de la suite de tests.
 
 ```bash
-npm test          # 37 tests, dont les 6 scenarios de recette
+npm test          # 41 tests, dont les 6 scenarios de recette
 ```
 
 La suite recree integralement la base de test, applique les migrations, injecte
@@ -13,7 +13,8 @@ le jeu de demonstration, puis deroule des cycles industriels complets
 
 Fichiers : `backend/tests/recette.test.ts` (acceptation),
 `backend/tests/metier.test.ts` (regles industrielles et financieres),
-`backend/tests/unitaires.test.ts` (calculs purs).
+`backend/tests/installation.test.ts` (amorcage d'un site neuf et securite des
+comptes), `backend/tests/unitaires.test.ts` (calculs purs).
 
 ---
 
@@ -105,6 +106,16 @@ les lots de PF generes et la liste nominative des clients livres.
   pesees, les lots de matieres premieres, leurs fournisseurs et leurs CoA.
 
 ---
+
+## Installation d'un site neuf (`installation.test.ts`)
+
+| Sujet | Verification |
+|---|---|
+| Amorcage | Parametres d'exploitation et plan analytique (13 categories) livres ; aucune donnee fictive (articles, clients, formules, lots, OF, ventes, fournisseurs, salaries a zero) ; un unique compte administrateur |
+| Idempotence | Rejoue a chaque demarrage sans rien dupliquer ni creer de second administrateur |
+| Mot de passe initial | Genere avec une entropie suffisante ; changement impose ; tout acces metier refuse avant (403 `MOT_DE_PASSE_A_CHANGER`), y compris par appel direct a l'API |
+| Politique de mot de passe | Refus sous dix caracteres, refus de reprendre l'ancien, ancien mot de passe invalide apres changement, jeton renouvele sans reconnexion |
+| Comptes crees par l'administrateur | Heritent de la meme obligation de changement |
 
 ## Couverture complementaire (`metier.test.ts`)
 

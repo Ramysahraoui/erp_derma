@@ -1,6 +1,7 @@
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { LIBELLES_ROLES, useAuth } from './auth';
 import { Connexion } from './pages/Connexion';
+import { ChangementMotDePasse } from './pages/ChangementMotDePasse';
 import { TableauDeBord } from './pages/TableauDeBord';
 import { Articles } from './pages/Articles';
 import { Receptions } from './pages/Receptions';
@@ -104,6 +105,8 @@ function Protege({ children }: { children: React.ReactNode }) {
   const { utilisateur } = useAuth();
   const emplacement = useLocation();
   if (!utilisateur) return <Navigate to="/connexion" state={{ de: emplacement.pathname }} replace />;
+  // Mot de passe initial ou reinitialise : aucun ecran metier avant le changement.
+  if (utilisateur.doit_changer_mot_de_passe) return <ChangementMotDePasse />;
   return <>{children}</>;
 }
 

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { construireApp } from '../src/app.js';
 import { pool, transaction } from '../src/db/pool.js';
 import { runMigrations } from '../src/db/migrate.js';
-import { semer } from '../src/db/seed.js';
+import { semerDemonstration } from '../src/db/donnees-demo.js';
 
 export interface Contexte {
   app: FastifyInstance;
@@ -13,7 +13,7 @@ export interface Contexte {
 export async function preparerBase(): Promise<void> {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await runMigrations(pool, () => {});
-  await transaction((client) => semer(client, () => {}));
+  await transaction((client) => semerDemonstration(client, () => {}));
 }
 
 export const COMPTES = {

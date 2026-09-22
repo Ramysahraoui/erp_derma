@@ -2,7 +2,7 @@ import test, { after, before, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { closePool, pool, transaction } from '../src/db/pool.js';
 import { runMigrations } from '../src/db/migrate.js';
-import { amorcer } from '../src/db/amorcage.js';
+import { amorcer, EMAIL_ADMIN_DEFAUT, estEmailValide } from '../src/db/amorcage.js';
 import { construireApp } from '../src/app.js';
 import type { FastifyInstance } from 'fastify';
 
@@ -106,9 +106,111 @@ describe("Installation d'un site neuf", () => {
     assert.equal(ancien.statut, 401);
   });
 
-  test("un compte cree par l'administrateur herite de la meme obligation", async () => {
-    const admin = await appel('POST', '/api/auth/connexion', undefined, {
+  test("l'identifiant administrateur par defaut passe la validation de la connexion", async () => {
+    // Regression : « admin@local » etait accepte a l'amorcage mais rejete par
+    // z.string().email() sur l'ecran de connexion — compte inutilisable.
+    assert.equal(estEmailValide(EMAIL_ADMIN_DEFAUT), true, `${EMAIL_ADMIN_DEFAUT} doit etre une adresse valide`);
+    assert.equal(estEmailValide('admin@local'), false, 'un domaine sans extension est rejete');
+
+    await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+    await runMigrations(pool, () => {});
+    const sansConfiguration = await transaction((client) => amorcer(client, {}, () => {}));
+    assert.equal(sansConfiguration.administrateur?.email, EMAIL_ADMIN_DEFAUT);
+
+    // L'adresse amorcee est acceptee telle quelle par l'API de connexion.
+    const connexion = await appel('POST', '/api/auth/connexion', undefined, {
+      email: EMAIL_ADMIN_DEFAUT,
+      mot_de_passe: sansConfiguration.administrateur!.mot_de_passe_genere,
+    });
+    assert.equal(connexion.statut, 200, `connexion refusee : ${JSON.stringify(connexion.corps)}`);
+  });
+
+  test("un ADMIN_EMAIL invalide ne produit pas un compte inutilisable", async () => {
+    await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+    await runMigrations(pool, () => {});
+    const journal: string[] = [];
+    const resultat = await transaction((client) =>
+      amorcer(client, { adminEmail: 'admin@local' }, (m) => journal.push(m)),
+    );
+    assert.equal(resultat.administrateur?.email, EMAIL_ADMIN_DEFAUT, 'repli sur une adresse valide');
+    assert.ok(journal.some((l) => /pas une adresse valide/.test(l)), "l'operateur est averti");
+
+    const connexion = await appel('POST', '/api/auth/connexion', undefined, {
+      email: EMAIL_ADMIN_DEFAUT, mot_de_passe: resultat.administrateur!.mot_de_passe_genere,
+    });
+    assert.equal(connexion.statut, 200);
+  });
+
+  test("un mot de passe actuel errone n'invalide pas la session et ne change rien", async () => {
+    // Regression : le refus etait renvoye en 401, que le client interpretait
+    // comme une session expiree — deconnexion silencieuse, changement percu
+    // comme reussi alors que rien n'etait enregistre.
+    await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+    await runMigrations(pool, () => {});
+    await transaction((client) =>
+      amorcer(client, { adminEmail: 'admin@usine.test', adminMotDePasse: 'temporaire-installation' }, () => {}),
+    );
+    const connexion = await appel('POST', '/api/auth/connexion', undefined, {
+      email: 'admin@usine.test', mot_de_passe: 'temporaire-installation',
+    });
+    const jeton = connexion.corps.jeton;
+
+    for (const saisie of ['temporaire-installation   ', 'temporaire-installatiox']) {
+      const refus = await appel('POST', '/api/auth/mot-de-passe', jeton, {
+        ancien_mot_de_passe: saisie, nouveau_mot_de_passe: 'phrase-de-passe-usine-2026',
+      });
+      assert.equal(refus.statut, 422, 'un 401 serait pris pour une session expiree');
+      assert.equal(refus.corps.erreur, 'MOT_DE_PASSE_ACTUEL_INCORRECT');
+    }
+
+    // La session reste valide et l'etat du compte est intact.
+    const profil = await appel('GET', '/api/auth/moi', jeton);
+    assert.equal(profil.statut, 200);
+    assert.equal(profil.corps.utilisateur.doit_changer_mot_de_passe, true);
+    const inchange = await appel('POST', '/api/auth/connexion', undefined, {
+      email: 'admin@usine.test', mot_de_passe: 'temporaire-installation',
+    });
+    assert.equal(inchange.statut, 200, 'le mot de passe temporaire est inchange');
+
+    // Le changement correct, lui, est bien persiste.
+    const change = await appel('POST', '/api/auth/mot-de-passe', jeton, {
+      ancien_mot_de_passe: 'temporaire-installation', nouveau_mot_de_passe: 'phrase-de-passe-usine-2026',
+    });
+    assert.equal(change.statut, 200);
+
+    const nouveau = await appel('POST', '/api/auth/connexion', undefined, {
       email: 'admin@usine.test', mot_de_passe: 'phrase-de-passe-usine-2026',
+    });
+    assert.equal(nouveau.statut, 200, 'le nouveau mot de passe fonctionne');
+    assert.equal(nouveau.corps.utilisateur.doit_changer_mot_de_passe, false, "l'obligation est levee");
+
+    const ancien = await appel('POST', '/api/auth/connexion', undefined, {
+      email: 'admin@usine.test', mot_de_passe: 'temporaire-installation',
+    });
+    assert.equal(ancien.statut, 401, 'le mot de passe temporaire ne fonctionne plus');
+
+    // Et l'etat persiste bien en base, hors de toute transaction ouverte.
+    const { rows } = await pool.query(
+      'SELECT doit_changer_mot_de_passe FROM utilisateurs WHERE LOWER(email) = $1', ['admin@usine.test'],
+    );
+    assert.equal(rows[0].doit_changer_mot_de_passe, false);
+  });
+
+  test("un compte cree par l'administrateur herite de la meme obligation", async () => {
+    // Le contexte precedent a remis la base a neuf : on repart d'un amorcage connu.
+    await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+    await runMigrations(pool, () => {});
+    await transaction((client) =>
+      amorcer(client, { adminEmail: 'admin@usine.test', adminMotDePasse: 'phrase-de-passe-usine-2026' }, () => {}),
+    );
+    const premiere = await appel('POST', '/api/auth/connexion', undefined, {
+      email: 'admin@usine.test', mot_de_passe: 'phrase-de-passe-usine-2026',
+    });
+    await appel('POST', '/api/auth/mot-de-passe', premiere.corps.jeton, {
+      ancien_mot_de_passe: 'phrase-de-passe-usine-2026', nouveau_mot_de_passe: 'phrase-de-passe-definitive',
+    });
+    const admin = await appel('POST', '/api/auth/connexion', undefined, {
+      email: 'admin@usine.test', mot_de_passe: 'phrase-de-passe-definitive',
     });
     const creation = await appel('POST', '/api/auth/utilisateurs', admin.corps.jeton, {
       email: 'operateur@usine.test', mot_de_passe: 'provisoire-2026', nom_complet: 'Operateur Atelier',

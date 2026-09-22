@@ -4,7 +4,7 @@ Les six scenarios du cahier des charges sont automatises et rejoues a chaque
 execution de la suite de tests.
 
 ```bash
-npm test          # 41 tests, dont les 6 scenarios de recette
+npm test          # 44 tests, dont les 6 scenarios de recette
 ```
 
 La suite recree integralement la base de test, applique les migrations, injecte
@@ -116,6 +116,8 @@ les lots de PF generes et la liste nominative des clients livres.
 | Mot de passe initial | Genere avec une entropie suffisante ; changement impose ; tout acces metier refuse avant (403 `MOT_DE_PASSE_A_CHANGER`), y compris par appel direct a l'API |
 | Politique de mot de passe | Refus sous dix caracteres, refus de reprendre l'ancien, ancien mot de passe invalide apres changement, jeton renouvele sans reconnexion |
 | Comptes crees par l'administrateur | Heritent de la meme obligation de changement |
+| Identifiant administrateur | L'adresse amorcee par defaut passe la validation de l'ecran de connexion ; un `ADMIN_EMAIL` sans domaine valide est signale et remplace au lieu de produire un compte inutilisable |
+| Mot de passe actuel errone | Refus en 422 (et non 401, qui serait pris pour une session expiree) : la session reste ouverte, le compte est inchange, puis le changement correct est bien persiste — ancien mot de passe invalide, obligation levee |
 
 ## Couverture complementaire (`metier.test.ts`)
 

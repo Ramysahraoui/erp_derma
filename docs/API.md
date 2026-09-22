@@ -14,7 +14,7 @@ restent accessibles.
 |---|---|---|---|
 | POST | `/auth/connexion` | — | Retourne `{ jeton, utilisateur }` |
 | GET | `/auth/moi` | authentifie | Profil courant |
-| POST | `/auth/mot-de-passe` | authentifie | Changement par l'utilisateur ; renvoie un jeton renouvele et leve l'obligation initiale |
+| POST | `/auth/mot-de-passe` | authentifie | Changement par l'utilisateur ; renvoie un jeton renouvele et leve l'obligation initiale. Mot de passe actuel errone : **422 `MOT_DE_PASSE_ACTUEL_INCORRECT`** (jamais 401, qui signifierait une session expiree) |
 | GET / POST | `/auth/utilisateurs` | `*` | Liste / creation |
 | PATCH | `/auth/utilisateurs/:id` | `*` | Role, activation, mot de passe |
 

@@ -101,7 +101,14 @@ une installation de production.**
 ## 4. Tests
 
 ```bash
-npm test            # 41 tests : installation, recette fonctionnelle, regles metier, unitaires
+npm test            # 44 tests : installation, recette fonctionnelle, regles metier, unitaires
+```
+
+Le jeu de fichiers copie dans l'image backend se verifie sans construire
+d'image (garde-fou contre un `COPY` oublie dans le `Dockerfile`) :
+
+```bash
+./outils/verifier-image-backend.sh
 ```
 
 Un parcours de validation de l'interface (Chromium) est egalement fourni :

@@ -7,3 +7,9 @@ uploads/
 .env.local
 .DS_Store
 coverage/
+
+# Deploiement
+.env
+sauvegardes/*
+!sauvegardes/.gitkeep
+*.tsbuildinfo

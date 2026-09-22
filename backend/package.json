@@ -8,13 +8,14 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "migrate": "tsx src/db/cli-migrate.ts",
-    "seed": "tsx src/db/cli-seed.ts",
     "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "amorcer": "tsx src/db/cli-amorcer.ts",
+    "demonstration": "tsx src/db/cli-demo.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

@@ -5,11 +5,16 @@ Les erreurs metier renvoient `{ "erreur": "CODE", "message": "…", "details": �
 avec un statut HTTP explicite (401 non authentifie, 403 privilege insuffisant,
 402 deblocage superviseur requis, 404 introuvable, 409 conflit, 422 regle metier).
 
+Tant que le mot de passe initial n'a pas ete change, toute route metier renvoie
+**403 `MOT_DE_PASSE_A_CHANGER`** ; seules `/auth/moi` et `/auth/mot-de-passe`
+restent accessibles.
+
 ## Authentification et utilisateurs
 | Methode | Route | Permission | Objet |
 |---|---|---|---|
 | POST | `/auth/connexion` | — | Retourne `{ jeton, utilisateur }` |
 | GET | `/auth/moi` | authentifie | Profil courant |
+| POST | `/auth/mot-de-passe` | authentifie | Changement par l'utilisateur ; renvoie un jeton renouvele et leve l'obligation initiale |
 | GET / POST | `/auth/utilisateurs` | `*` | Liste / creation |
 | PATCH | `/auth/utilisateurs/:id` | `*` | Role, activation, mot de passe |
 

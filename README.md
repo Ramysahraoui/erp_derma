@@ -12,7 +12,40 @@ Le perimetre fonctionnel couvre les quatre jalons du cahier des charges
 
 ---
 
-## 1. Stack technique
+## 1. Installation sur le serveur de l'usine
+
+Un seul prerequis : **Docker**. Tout le reste est automatique.
+
+```bash
+git clone <adresse-du-depot> erp-derma
+cd erp-derma
+./installer.sh
+```
+
+Le script genere les secrets, construit les images, demarre la base de donnees,
+l'API et le serveur web, applique le schema, amorce le parametrage et cree le
+compte administrateur — dont il affiche le mot de passe initial a noter.
+L'application est alors accessible depuis tout le reseau local :
+`http://<ip-du-serveur>:8080`.
+
+La base est livree **sans aucune donnee fictive** : un compte administrateur,
+les parametres d'exploitation et le plan de ventilation analytique. Articles,
+formules, lots et clients sont saisis par vos equipes.
+
+Guide detaille (prerequis materiels, reseau, sauvegardes, depannage) :
+**`docs/INSTALLATION.md`**.
+
+| Operation courante | Commande |
+|---|---|
+| Etat des services | `docker compose ps` |
+| Journaux | `docker compose logs -f` |
+| Arret / redemarrage | `docker compose stop` / `docker compose start` |
+| Sauvegarde | `./sauvegarde.sh` |
+| Mise a jour | `git pull && ./installer.sh` |
+
+---
+
+## 2. Stack technique
 
 | Couche | Choix | Justification |
 |---|---|---|
@@ -24,7 +57,7 @@ Le perimetre fonctionnel couvre les quatre jalons du cahier des charges
 Aucun ORM n'intervient sur les regles de tracabilite : le schema SQL
 (`backend/src/db/migrations/001_socle.sql`) est la source de verite.
 
-## 2. Demarrage
+## 3. Environnement de developpement
 
 ### Prerequis
 - Node.js >= 20, npm >= 10
@@ -39,7 +72,7 @@ npm run installer                       # dependances backend + frontend
 cp backend/.env.example backend/.env    # puis ajuster DATABASE_URL et JWT_SECRET
 createdb erp_derma                      # base applicative
 npm run migrer                          # creation du schema
-npm run semer                           # jeu de demonstration (optionnel)
+npm run amorcer                         # parametrage + compte administrateur
 ```
 
 ### Execution
@@ -52,20 +85,23 @@ npm run dev:web     # interface sur http://localhost:5173 (proxy /api -> 3000)
 En production : `npm run build` puis `node backend/dist/server.js`, le dossier
 `frontend/dist` etant servi par un serveur statique ou un reverse proxy.
 
-### Comptes de demonstration (mot de passe `Derma2026!`)
-
-| Compte | Role | Perimetre |
-|---|---|---|
-| `direction@derma.dz` | Administrateur / Direction | Acces complet, parametrage, rentabilite |
-| `qualite@derma.dz` | Responsable R&D / Qualite | Formules, liberation des lots, ordres de fabrication |
-| `atelier@derma.dz` | Operateur production | Pesees, cuve, conditionnement — aucun acces aux couts ni aux clients |
-| `commercial@derma.dz` | Commercial / Facturation | Clients, devis, BL, factures |
-| `comptabilite@derma.dz` | Comptabilite / Recouvrement | Encaissements, balance agee, depenses |
-
-## 3. Tests
+### Jeu de demonstration (formation et recette uniquement)
 
 ```bash
-npm test            # 37 tests : recette fonctionnelle, regles metier, unitaires
+npm run demonstration          # en developpement
+# ou, sur une installation conteneurisee de TEST :
+docker compose exec api node dist/db/cli-demo.js
+```
+
+Il injecte un referentiel fictif complet (22 articles, 3 formules, lots, clients)
+et cinq comptes — `direction@`, `qualite@`, `atelier@`, `commercial@`,
+`comptabilite@derma.dz`, mot de passe `Derma2026!`. **A ne jamais executer sur
+une installation de production.**
+
+## 4. Tests
+
+```bash
+npm test            # 41 tests : installation, recette fonctionnelle, regles metier, unitaires
 ```
 
 Un parcours de validation de l'interface (Chromium) est egalement fourni :
@@ -81,7 +117,7 @@ La suite de tests backend reinitialise integralement une base dediee
 demonstration puis deroule des cycles industriels complets.
 Detail des scenarios de recette : `docs/RECETTE.md`.
 
-## 4. Regles metier non negociables et leur application
+## 5. Regles metier non negociables et leur application
 
 | Regle | Ou elle est appliquee |
 |---|---|
@@ -92,11 +128,16 @@ Detail des scenarios de recette : `docs/RECETTE.md`.
 | Aucune sortie commerciale sans numero de lot de PF | Triggers `fn_ligne_bl_exige_lot` et `fn_controle_validation_bl` + refus API |
 | Cloture d'OF impossible sans pesees completes | Trigger `fn_controle_cloture_of` + verification applicative |
 | Consommation reservee aux lots conformes | Triggers `fn_mouvement_lot_conforme`, `fn_pesee_lot_valide` + filtrage FEFO de l'ecran de pesee |
+| Mot de passe initial a usage unique | Changement impose a la premiere connexion, refus serveur de tout acces metier avant (`MOT_DE_PASSE_A_CHANGER`) |
 | Certificat d'analyse obligatoire a la reception | Refus API sans CoA ni motif ; trigger `fn_liberation_exige_coa` interdisant de declarer conforme un lot MP/AC sans document joint |
 
-## 5. Organisation du depot
+## 6. Organisation du depot
 
 ```
+installer.sh                 installation sur site (Docker)
+sauvegarde.sh                sauvegarde et restauration
+docker-compose.yml           base de donnees + API + serveur web
+.env.exemple                 configuration (port, societe, compte admin)
 backend/                     API metier (Fastify + PostgreSQL)
   src/db/migrations/         schema SQL, triggers et vues
   src/core/                  RBAC, audit trail, numerotation, precision decimale
@@ -107,10 +148,11 @@ frontend/                    SPA React (dont ecran de pesee tactile)
 docs/                        CDCF, architecture, API, recette, exploitation
 ```
 
-## 6. Documentation
+## 7. Documentation
 
+- `docs/INSTALLATION.md` — **guide d'installation sur site** (prerequis, reseau, sauvegardes, depannage)
 - `docs/CDCF.md` — cahier des charges fonctionnel et technique de reference
 - `docs/ARCHITECTURE.md` — modele de donnees, flux industriels, calculs (CRU, rendement, PAMP, FEFO)
 - `docs/API.md` — reference des points d'entree REST
 - `docs/RECETTE.md` — scenarios d'acceptation TEST-01 a TEST-06 et resultats
-- `docs/EXPLOITATION.md` — deploiement, sauvegarde, securite, parametrage
+- `docs/EXPLOITATION.md` — parametrage, securite, migrations, supervision

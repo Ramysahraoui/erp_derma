@@ -3,14 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { AlerteErreur, Champ } from '../composants/Ui';
 
-const COMPTES_DEMO = [
-  ['direction@derma.dz', 'Direction / administrateur'],
-  ['qualite@derma.dz', 'Responsable R&D et qualite'],
-  ['atelier@derma.dz', 'Operateur de production'],
-  ['commercial@derma.dz', 'Service commercial'],
-  ['comptabilite@derma.dz', 'Comptabilite et recouvrement'],
-];
-
 export function Connexion() {
   const { connexion } = useAuth();
   const naviguer = useNavigate();
@@ -52,17 +44,10 @@ export function Connexion() {
             {enCours ? 'Connexion…' : 'Se connecter'}
           </button>
         </form>
-        <div className="comptes-demo">
-          <strong>Comptes de demonstration</strong> (mot de passe&nbsp;: Derma2026!)
-          <ul style={{ paddingLeft: 16, margin: '8px 0 0' }}>
-            {COMPTES_DEMO.map(([adresse, role]) => (
-              <li key={adresse}>
-                <button type="button" onClick={() => { setEmail(adresse); setMotDePasse('Derma2026!'); }}>{adresse}</button>
-                {' — '}{role}
-              </li>
-            ))}
-          </ul>
-        </div>
+        <p className="comptes-demo">
+          Acces reserve au personnel autorise. En cas d'oubli de mot de passe,
+          contacter l'administrateur du systeme.
+        </p>
       </div>
     </div>
   );

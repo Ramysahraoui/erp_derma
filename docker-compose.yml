@@ -1,0 +1,79 @@
+# =====================================================================
+# ERP / MES dermo-cosmetique — deploiement en reseau local
+#
+#   1. ./installer.sh          (genere .env puis demarre tout)
+#   2. http://<ip-du-serveur>:8080
+#
+# Les trois services demarrent dans l'ordre : base de donnees, API (qui
+# applique le schema et l'amorcage), puis interface web.
+# =====================================================================
+name: erp-derma
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-erp_derma}
+      POSTGRES_USER: ${POSTGRES_USER:-erp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?mot de passe de base de donnees requis}
+      TZ: ${TZ:-Africa/Algiers}
+      # Collation et encodage adaptes aux libelles accentues
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - donnees_postgres:/var/lib/postgresql/data
+      - ./sauvegardes:/sauvegardes
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-erp} -d ${POSTGRES_DB:-erp_derma}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    # La base n'est pas exposee hors de la machine hote par defaut.
+    # Decommenter pour brancher un outil d'administration distant :
+    # ports: ["5432:5432"]
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-erp}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-erp_derma}
+      JWT_SECRET: ${JWT_SECRET:?secret de signature des jetons requis}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-12h}
+      TZ: ${TZ:-Africa/Algiers}
+      # Compte administrateur cree au tout premier demarrage uniquement.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@local}
+      ADMIN_NOM: ${ADMIN_NOM:-Administrateur}
+      ADMIN_MOT_DE_PASSE: ${ADMIN_MOT_DE_PASSE:-}
+      # Identite imprimee sur les documents
+      SOCIETE_NOM: ${SOCIETE_NOM:-Laboratoire Dermo-Cosmetique}
+      SOCIETE_ADRESSE: ${SOCIETE_ADRESSE:-}
+      SOCIETE_TEL: ${SOCIETE_TEL:-}
+      SOCIETE_EMAIL: ${SOCIETE_EMAIL:-}
+      SOCIETE_RC: ${SOCIETE_RC:-}
+      SOCIETE_NIF: ${SOCIETE_NIF:-}
+      DEVISE: ${DEVISE:-DZD}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      # Certificats d'analyse et pieces jointes — a sauvegarder avec la base.
+      - fichiers_erp:/app/uploads
+
+  web:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${PORT_WEB:-8080}:80"
+    environment:
+      TZ: ${TZ:-Africa/Algiers}
+
+volumes:
+  donnees_postgres:
+  fichiers_erp:

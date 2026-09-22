@@ -3,7 +3,13 @@ import { api, effacerSession, enregistrerSession, utilisateurEnregistre } from '
 
 export type Role = 'OPERATEUR_PRODUCTION' | 'RESPONSABLE_RD_QUALITE' | 'COMMERCIAL' | 'COMPTABILITE' | 'ADMIN';
 
-export interface Utilisateur { id: number; email: string; nom_complet: string; role: Role }
+export interface Utilisateur {
+  id: number;
+  email: string;
+  nom_complet: string;
+  role: Role;
+  doit_changer_mot_de_passe?: boolean;
+}
 
 /** Matrice RBAC miroir de celle du serveur : pilote l'affichage des menus. */
 const PERMISSIONS: Record<Role, string[]> = {
@@ -31,6 +37,8 @@ interface ContexteAuth {
   utilisateur: Utilisateur | null;
   connexion: (email: string, motDePasse: string) => Promise<void>;
   deconnexion: () => void;
+  rafraichirProfil: () => Promise<void>;
+  appliquerSession: (jeton: string, utilisateur: Utilisateur) => void;
   peut: (permission: string) => boolean;
 }
 
@@ -43,6 +51,20 @@ export function FournisseurAuth({ children }: { children: ReactNode }) {
     const reponse = await api.post<{ jeton: string; utilisateur: Utilisateur }>('/auth/connexion', { email, mot_de_passe });
     enregistrerSession(reponse.jeton, reponse.utilisateur);
     setUtilisateur(reponse.utilisateur);
+  }, []);
+
+  /** Applique une session renouvelee (nouveau jeton apres changement de mot de passe). */
+  const appliquerSession = useCallback((jeton: string, profil: Utilisateur) => {
+    enregistrerSession(jeton, profil);
+    setUtilisateur(profil);
+  }, []);
+
+  /** Recharge le profil serveur. */
+  const rafraichirProfil = useCallback(async () => {
+    const reponse = await api.get<{ utilisateur: Utilisateur }>('/auth/moi');
+    setUtilisateur(reponse.utilisateur);
+    const jeton = localStorage.getItem('erp-derma-jeton');
+    if (jeton) enregistrerSession(jeton, reponse.utilisateur);
   }, []);
 
   const deconnexion = useCallback(() => {
@@ -59,7 +81,10 @@ export function FournisseurAuth({ children }: { children: ReactNode }) {
     [utilisateur],
   );
 
-  const valeur = useMemo(() => ({ utilisateur, connexion, deconnexion, peut }), [utilisateur, connexion, deconnexion, peut]);
+  const valeur = useMemo(
+    () => ({ utilisateur, connexion, deconnexion, rafraichirProfil, appliquerSession, peut }),
+    [utilisateur, connexion, deconnexion, rafraichirProfil, appliquerSession, peut],
+  );
   return <Contexte.Provider value={valeur}>{children}</Contexte.Provider>;
 }
 

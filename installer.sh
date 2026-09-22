@@ -78,12 +78,20 @@ succes "Application disponible"
 
 # --------------------------------------------------------------- 5/5
 etape "5/5  Compte administrateur"
-identifiants="$(docker compose logs api 2>/dev/null | grep -A3 'MOT DE PASSE ADMINISTRATEUR GENERE' || true)"
-if [ -n "$identifiants" ]; then
-  docker compose logs api 2>/dev/null | sed -n '/MOT DE PASSE ADMINISTRATEUR GENERE/,/└/p' | sed 's/^[^|┌├└]*//'
+# Le bloc d'identifiants est imprime une seule fois, au premier demarrage.
+journal_api="$(docker compose logs api 2>/dev/null || true)"
+if printf '%s' "$journal_api" | grep -q 'COMPTE ADMINISTRATEUR'; then
+  # Retrait du prefixe de service ajoute par « docker compose logs ».
+  printf '%s' "$journal_api" \
+    | sed -n '/COMPTE ADMINISTRATEUR/,/Changement impose/p' \
+    | sed -E 's/^[A-Za-z0-9_.-]+[[:space:]]*\| ?//'
   printf '%s  Notez ce mot de passe : il n apparait qu une seule fois.%s\n' "$jaune" "$fin"
+elif printf '%s' "$journal_api" | grep -q "n'est pas une adresse valide"; then
+  printf '%s' "$journal_api" | sed -n "/n'est pas une adresse valide/,/adresse par defaut/p" \
+    | sed -E 's/^[A-Za-z0-9_.-]+[[:space:]]*\| ?//'
 else
-  info "Compte administrateur deja initialise (voir .env : ADMIN_EMAIL)."
+  identifiant_configure="$(grep -E '^ADMIN_EMAIL=' .env | cut -d= -f2)"
+  info "Compte administrateur deja initialise : ${identifiant_configure:-voir .env}"
 fi
 
 adresse_ip="$( (hostname -I 2>/dev/null || ipconfig getifaddr en0 2>/dev/null || echo '') | awk '{print $1}')"

@@ -47,12 +47,13 @@ A la fin, il affiche :
   Acces depuis ce poste       : http://localhost:8080
   Acces depuis le reseau local : http://192.168.1.50:8080
 
-  ┌───────────────────────────────────────────────────────────────┐
-  │  MOT DE PASSE ADMINISTRATEUR GENERE — a noter immediatement   │
-  │  Identifiant : admin@local                                    │
-  │  Mot de passe : 9QKBKpKLG6Tt332dsM                            │
-  │  Changement impose a la premiere connexion.                   │
-  └───────────────────────────────────────────────────────────────┘
+  ================================================================
+   COMPTE ADMINISTRATEUR — a noter immediatement
+  ================================================================
+   Identifiant  : admin@erp-derma.local
+   Mot de passe : 9QKBKpKLG6Tt332dsM
+   Changement impose a la premiere connexion.
+  ================================================================
 ```
 
 **Notez ce mot de passe** : il n'est affiche qu'une fois (il reste consultable
@@ -65,7 +66,8 @@ Le fichier `.env`, cree par le script, rassemble toute la configuration :
 
 ```bash
 PORT_WEB=8080                       # port d'acces depuis le reseau local
-ADMIN_EMAIL=admin@local             # identifiant du compte administrateur
+ADMIN_EMAIL=admin@erp-derma.local   # identifiant du compte administrateur
+                                    # (un domaine avec extension est requis)
 ADMIN_MOT_DE_PASSE=                 # laisser vide = mot de passe genere
 SOCIETE_NOM=Laboratoire Dermo-Cosmetique
 SOCIETE_ADRESSE=Zone industrielle, Rouiba
@@ -174,7 +176,9 @@ l'interface appelle l'API par des chemins relatifs.
 |---|---|
 | `./installer.sh` : « Le service Docker n'est pas demarre » | `sudo systemctl start docker`, puis verifier que l'utilisateur est dans le groupe `docker` |
 | La page ne s'affiche pas depuis un poste | Pare-feu du serveur, adresse IP, `docker compose ps` (les trois services doivent etre « running ») |
-| « Identifiants invalides » a la premiere connexion | Recuperer le mot de passe : `docker compose logs api \| grep -A4 "MOT DE PASSE"` |
+| « Identifiants invalides » a la premiere connexion | Recuperer les identifiants : `docker compose logs api \| grep -A4 "COMPTE ADMINISTRATEUR"` |
+| « Donnees invalides » sur l'adresse a la connexion | `ADMIN_EMAIL` doit comporter un domaine avec extension (`admin@usine.local`, pas `admin@usine`) ; l'amorcage signale et corrige ce cas dans les journaux |
+| Le changement de mot de passe initial est refuse | Le message precise la cause ; verifier notamment l'absence d'espaces en debut ou fin de la valeur copiee depuis le terminal |
 | Les documents PDF ne s'ouvrent pas | `docker compose logs api` ; en l'absence du moteur de rendu, les documents restent imprimables en HTML |
 | Lenteur generale | `docker stats` ; la base de donnees est le premier poste a surveiller |
 | Repartir de zero (installation de test) | `docker compose down -v` **efface toutes les donnees**, puis `./installer.sh` |

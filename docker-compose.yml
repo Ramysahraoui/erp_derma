@@ -46,7 +46,7 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-12h}
       TZ: ${TZ:-Africa/Algiers}
       # Compte administrateur cree au tout premier demarrage uniquement.
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@local}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@erp-derma.local}
       ADMIN_NOM: ${ADMIN_NOM:-Administrateur}
       ADMIN_MOT_DE_PASSE: ${ADMIN_MOT_DE_PASSE:-}
       # Identite imprimee sur les documents

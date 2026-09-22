@@ -54,7 +54,13 @@ async function requete<T>(methode: string, url: string, corps?: unknown): Promis
   try { donnees = texte ? JSON.parse(texte) : null; } catch { donnees = texte; }
 
   if (!reponse.ok) {
-    if (reponse.status === 401) {
+    // Seul un probleme de session (jeton absent, invalide ou expire) justifie une
+    // deconnexion. Un refus portant sur une valeur saisie dans un formulaire doit
+    // remonter a l'ecran appelant, qui l'affiche : sinon l'utilisateur est
+    // redirige sans message et croit son action reussie.
+    const problemeDeSession = reponse.status === 401
+      && (donnees?.erreur === undefined || donnees?.erreur === 'NON_AUTHENTIFIE');
+    if (problemeDeSession) {
       effacerSession();
       if (!location.pathname.startsWith('/connexion')) location.href = '/connexion';
     }

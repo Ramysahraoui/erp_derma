@@ -1,8 +1,22 @@
 import type pg from 'pg';
 import { randomBytes } from 'node:crypto';
+import { z } from 'zod';
 import { queryOne } from './pool.js';
 import { hacher } from '../core/auth.js';
 import { PARAMETRES_DEFAUT } from '../core/parametres.js';
+
+/**
+ * Identifiant du compte administrateur cree a l'installation lorsque la
+ * configuration n'en fournit pas. Il doit satisfaire la meme validation que
+ * l'ecran de connexion (domaine avec extension), faute de quoi le compte cree
+ * serait inutilisable. Toute valeur par defaut ailleurs (.env.exemple,
+ * docker-compose.yml) doit rester alignee sur cette constante.
+ */
+export const EMAIL_ADMIN_DEFAUT = 'admin@erp-derma.local';
+
+/** Regle de validation partagee avec l'authentification (`z.string().email()`). */
+const schemaEmail = z.string().email();
+export const estEmailValide = (email: string): boolean => schemaEmail.safeParse(email).success;
 
 /**
  * Categories analytiques de charges livrees en standard (CDCF module 4.1).
@@ -71,7 +85,18 @@ export async function amorcer(
   // utilisateur, afin de ne jamais reintroduire un acces a chaque redemarrage.
   const existants = await queryOne<{ n: number }>(client, 'SELECT COUNT(*)::int AS n FROM utilisateurs');
   if ((existants?.n ?? 0) === 0) {
-    const email = options.adminEmail?.trim() || 'admin@local';
+    // Un identifiant invalide produirait un compte impossible a utiliser :
+    // on le signale explicitement et on retombe sur la valeur par defaut.
+    const emailDemande = options.adminEmail?.trim();
+    let email = emailDemande || EMAIL_ADMIN_DEFAUT;
+    if (emailDemande && !estEmailValide(emailDemande)) {
+      log('');
+      log(`  /!\\  ADMIN_EMAIL « ${emailDemande} » n'est pas une adresse valide (un domaine`);
+      log(`       avec extension est requis, par exemple admin@usine.local).`);
+      log(`       Compte cree avec l'adresse par defaut : ${EMAIL_ADMIN_DEFAUT}`);
+      log('');
+      email = EMAIL_ADMIN_DEFAUT;
+    }
     const motDePasseFourni = options.adminMotDePasse?.trim();
     const motDePasse = motDePasseFourni || motDePasseAleatoire();
     await client.query(
@@ -82,14 +107,16 @@ export async function amorcer(
     resultat.administrateur = { email, ...(motDePasseFourni ? {} : { mot_de_passe_genere: motDePasse }) };
     log(`[amorcage] compte administrateur cree : ${email}`);
     if (!motDePasseFourni) {
+      // Les valeurs sont imprimees sans remplissage a droite : une selection a
+      // la souris dans le terminal n'emporte ainsi aucun espace parasite.
       log('');
-      log('  ┌───────────────────────────────────────────────────────────────┐');
-      log('  │  MOT DE PASSE ADMINISTRATEUR GENERE — a noter immediatement   │');
-      log('  ├───────────────────────────────────────────────────────────────┤');
-      log(`  │  Identifiant : ${email.padEnd(46)} │`);
-      log(`  │  Mot de passe : ${motDePasse.padEnd(45)} │`);
-      log('  │  Changement impose a la premiere connexion.                   │');
-      log('  └───────────────────────────────────────────────────────────────┘');
+      log('  ================================================================');
+      log('   COMPTE ADMINISTRATEUR — a noter immediatement');
+      log('  ================================================================');
+      log(`   Identifiant  : ${email}`);
+      log(`   Mot de passe : ${motDePasse}`);
+      log('   Changement impose a la premiere connexion.');
+      log('  ================================================================');
       log('');
     }
   }

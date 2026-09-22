@@ -63,7 +63,14 @@ export async function routesAuth(app: FastifyInstance): Promise<void> {
       .parse(req.body);
     const u = await queryOne(pool, 'SELECT id, mot_de_passe FROM utilisateurs WHERE id = $1', [req.utilisateur.id]);
     if (!u || !(await verifierMotDePasse(b.ancien_mot_de_passe, u.mot_de_passe))) {
-      throw new ErreurMetier('IDENTIFIANTS_INVALIDES', 'Mot de passe actuel incorrect.', 401);
+      // 422 et non 401 : la session est valide, c'est la valeur saisie dans le
+      // formulaire qui est fausse. Un 401 serait compris comme une session
+      // expirée et deconnecterait l'utilisateur sans lui montrer l'erreur.
+      throw new ErreurMetier(
+        'MOT_DE_PASSE_ACTUEL_INCORRECT',
+        'Mot de passe actuel incorrect. Verifier la saisie (espaces en debut ou fin de la valeur copiee).',
+        422,
+      );
     }
     if (await verifierMotDePasse(b.nouveau_mot_de_passe, u.mot_de_passe)) {
       throw new ErreurMetier('MOT_DE_PASSE_IDENTIQUE', "Le nouveau mot de passe doit differer de l'ancien.", 422);

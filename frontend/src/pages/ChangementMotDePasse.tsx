@@ -18,6 +18,9 @@ export function ChangementMotDePasse() {
 
   const assezFort = nouveau.length >= 10;
   const identiques = nouveau.length > 0 && nouveau === confirmation;
+  // Piege classique : le mot de passe provisoire est copie depuis le terminal
+  // avec des espaces avant ou apres.
+  const espacesParasites = ancien.length > 0 && ancien !== ancien.trim();
 
   const soumettre = async (e: FormEvent) => {
     e.preventDefault();
@@ -51,7 +54,8 @@ export function ChangementMotDePasse() {
           et complexe.
         </Alerte>
         <form onSubmit={soumettre}>
-          <Champ libelle="Mot de passe actuel" obligatoire>
+          <Champ libelle="Mot de passe actuel" obligatoire
+            aide={espacesParasites ? "La saisie comporte un espace au debut ou a la fin : le retirer." : undefined}>
             <input type="password" value={ancien} autoComplete="current-password" required
               onChange={(e) => setAncien(e.target.value)} />
           </Champ>

@@ -4,6 +4,7 @@ import { Connexion } from './pages/Connexion';
 import { ChangementMotDePasse } from './pages/ChangementMotDePasse';
 import { TableauDeBord } from './pages/TableauDeBord';
 import { Articles } from './pages/Articles';
+import { Fournisseurs } from './pages/Fournisseurs';
 import { Receptions } from './pages/Receptions';
 import { Lots } from './pages/Lots';
 import { Capacite } from './pages/Capacite';
@@ -22,11 +23,12 @@ import { Rentabilite } from './pages/Rentabilite';
 import { Tracabilite } from './pages/Tracabilite';
 import { Administration } from './pages/Administration';
 
-interface Entree { chemin: string; libelle: string; icone: string; permission: string; groupe: string }
+interface Entree { chemin: string; libelle: string; icone: string; permission: string | string[]; groupe: string }
 
 const MENU: Entree[] = [
   { groupe: 'Pilotage', chemin: '/', libelle: 'Tableau de bord', icone: '◧', permission: 'stock:lire' },
   { groupe: 'Achats & stocks', chemin: '/articles', libelle: 'Articles', icone: '▤', permission: 'article:lire' },
+  { groupe: 'Achats & stocks', chemin: '/fournisseurs', libelle: 'Fournisseurs', icone: '⛟', permission: ['article:lire', 'achat:lire', 'depense:lire'] },
   { groupe: 'Achats & stocks', chemin: '/receptions', libelle: 'Receptions', icone: '⇩', permission: 'stock:lire' },
   { groupe: 'Achats & stocks', chemin: '/lots', libelle: 'Lots & stock', icone: '▣', permission: 'stock:lire' },
   { groupe: 'Achats & stocks', chemin: '/capacite', libelle: 'Capacite predictive', icone: '◱', permission: 'stock:lire' },
@@ -44,7 +46,7 @@ const MENU: Entree[] = [
 
 function Navigation() {
   const { peut } = useAuth();
-  const visibles = MENU.filter((e) => peut(e.permission));
+  const visibles = MENU.filter((e) => [e.permission].flat().some((p) => peut(p)));
   const groupes = [...new Set(visibles.map((e) => e.groupe))];
   return (
     <aside className="navigation">
@@ -125,6 +127,7 @@ export function Application() {
               <Routes>
                 <Route path="/" element={<TableauDeBord />} />
                 <Route path="/articles" element={<Articles />} />
+                <Route path="/fournisseurs" element={<Fournisseurs />} />
                 <Route path="/receptions" element={<Receptions />} />
                 <Route path="/lots" element={<Lots />} />
                 <Route path="/capacite" element={<Capacite />} />

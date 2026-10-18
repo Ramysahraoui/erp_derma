@@ -29,7 +29,8 @@
 - `articles_catalogue` — MP / AC / PF, unite contrainte par type, seuil critique,
   PAMP, masse volumique (MP achetees au volume), contenance (PF).
 - `nomenclature_ac` — quantite d'articles de conditionnement par unite de PF.
-- `fournisseurs`, `receptions` — origine des entrees.
+- `fournisseurs` (desactivables, jamais supprimes ; `fournisseurs_modifications`
+  trace chaque modification de fiche), `receptions` — origine des entrees.
 - `lots_stock` — lot interne unique (`LOT-MP-AAAA-XXXXX`), lot fournisseur, DLUO,
   statut qualite, cout unitaire genere (`prix_achat + frais_approche`), certificat
   de conformite facultatif (`coa_fichier`, joignable apres coup).

@@ -4,7 +4,7 @@ Les six scenarios du cahier des charges sont automatises et rejoues a chaque
 execution de la suite de tests.
 
 ```bash
-npm test          # 57 tests, dont les 6 scenarios de recette et les 5 criteres V2
+npm test          # 62 tests, dont les 6 scenarios de recette et les 5 criteres V2
 ```
 
 La suite recree integralement la base de test, applique les migrations, injecte
@@ -14,6 +14,7 @@ le jeu de demonstration, puis deroule des cycles industriels complets
 Fichiers : `backend/tests/recette.test.ts` (acceptation),
 `backend/tests/metier.test.ts` (regles industrielles et financieres),
 `backend/tests/v2.test.ts` (criteres de validation V2),
+`backend/tests/fournisseurs.test.ts` (referentiel fournisseurs),
 `backend/tests/installation.test.ts` (amorcage d'un site neuf et securite des
 comptes), `backend/tests/unitaires.test.ts` (calculs purs).
 
@@ -139,6 +140,7 @@ les lots de PF generes et la liste nominative des clients livres.
 | Capacite | Goulot identifie et commande d'achat generee |
 | RBAC | Cloisonnement de l'operateur atelier, refus d'acces anonyme |
 | Documents | Dossier de lot, bon de pesee, BL avec numeros de lots, etiquette code-barres, rendu PDF reel |
+| Fournisseurs (`fournisseurs.test.ts`) | Creation, code unique (409), modification tracee champ par champ, fiche avec receptions et lots, desactivation refusant toute nouvelle reception, suppression SQL interdite, droits par role |
 | Journal d'audit | Presence des actions sensibles, horodatage et utilisateur nominatif |
 
 ## Criteres de validation V2 (`v2.test.ts`)
@@ -160,7 +162,8 @@ faisabilite, ecran de pesee tactile (selection FEFO, clavier numerique,
 validation d'une pesee), puis les parcours V2 : import d'articles depuis le
 modele (apercu, compte rendu), modification tracee, reception par Excel sans
 certificat, ajustement et reintroduction d'un lot rejete, encaissement visible
-dans le releve du client avec le solde attendu. Aucune erreur console n'est
+dans le releve du client avec le solde attendu ; enfin la gestion des fournisseurs
+(creation, modification tracee, desactivation, creation depuis une reception). Aucune erreur console n'est
 remontee.
 
 Les code-barres Code 128 produits pour les etiquettes de lots ont ete relus avec

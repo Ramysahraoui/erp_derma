@@ -212,29 +212,4 @@ export async function routesArticles(app: FastifyInstance): Promise<void> {
       [id],
     );
   });
-
-  // ---------------------------- Fournisseurs ------------------------
-  app.get('/fournisseurs', { preHandler: exige('article:lire') }, async () =>
-    query(pool, 'SELECT * FROM fournisseurs ORDER BY raison_sociale'),
-  );
-
-  app.post('/fournisseurs', { preHandler: exige('achat:ecrire') }, async (req, rep) => {
-    const b = z
-      .object({
-        code: z.string().min(2),
-        raison_sociale: z.string().min(2),
-        contact: z.string().optional().nullable(),
-        telephone: z.string().optional().nullable(),
-        email: z.string().email().optional().nullable(),
-        adresse: z.string().optional().nullable(),
-      })
-      .parse(req.body);
-    const f = await queryOne(
-      pool,
-      `INSERT INTO fournisseurs (code, raison_sociale, contact, telephone, email, adresse)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [b.code.toUpperCase(), b.raison_sociale, b.contact ?? null, b.telephone ?? null, b.email ?? null, b.adresse ?? null],
-    );
-    return rep.status(201).send(f);
-  });
 }

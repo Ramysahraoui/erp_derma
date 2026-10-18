@@ -26,13 +26,16 @@ restent accessibles.
 | POST / PATCH | `/articles` `/articles/:id` | `article:ecrire` | Creation / mise a jour. Le `PATCH` accepte `code_sku` (code deja attribue : **409 `CODE_DEJA_UTILISE`**), `actif`, `prix_vente_ht`... ; chaque champ modifie est trace |
 | GET | `/articles/:id/modifications` | `article:lire` | Historique : champ, ancienne et nouvelle valeur, utilisateur, date |
 | PUT | `/articles/:id/nomenclature` | `article:ecrire` | Nomenclature de conditionnement d'un PF |
-| GET / POST | `/fournisseurs` | `article:lire` / `achat:ecrire` | Fournisseurs |
+| GET | `/fournisseurs` | `article:lire`, `achat:lire` ou `depense:lire` | Liste ; filtres `recherche`, `actif` ; nombre de receptions et date de la derniere |
+| GET | `/fournisseurs/:id` | idem | Fiche, receptions, lots, commandes d'achat (`achat:lire`), depenses (`depense:lire`), historique des modifications |
+| POST | `/fournisseurs` | `achat:ecrire` ou `depense:ecrire` | Creation ; code mis en majuscules, code deja attribue : **409 `CODE_DEJA_UTILISE`** |
+| PATCH | `/fournisseurs/:id` | `achat:ecrire` ou `depense:ecrire` | Modification et `actif` (desactivation) ; chaque champ modifie est trace. Un fournisseur ne se supprime pas |
 
 ## Stock et receptions
 | Methode | Route | Permission | Objet |
 |---|---|---|---|
 | POST | `/fichiers` | `stock:receptionner` | Televersement d'un CoA (PDF/image, 12 Mo) |
-| POST | `/receptions` | `stock:receptionner` | Reception multi-lignes, genere les lots internes. `coa_fichier` **facultatif** ; le statut demande est respecte. Article inactif : **422 `ARTICLE_INDISPONIBLE`** |
+| POST | `/receptions` | `stock:receptionner` | Reception multi-lignes, genere les lots internes. `coa_fichier` **facultatif** ; le statut demande est respecte. Article inactif : **422 `ARTICLE_INDISPONIBLE`** ; fournisseur desactive : **422 `FOURNISSEUR_INACTIF`** |
 | GET | `/receptions` `/receptions/:id` | `stock:lire` | Historique et detail |
 | GET | `/lots` | `stock:lire` | Filtres `article_id`, `statut`, `type`, `recherche`, `disponible`, `peremption_avant` |
 | GET | `/lots/:id` | `stock:lire` | Lot, historique complet des mouvements et `historique_statuts` |

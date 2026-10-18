@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ErreurMetier } from './erreurs.js';
-import { exigerPermission, type Role } from './rbac.js';
+import { aLaPermission, exigerPermission, type Role } from './rbac.js';
 
 export interface UtilisateurConnecte {
   id: number;
@@ -52,4 +52,11 @@ export const exige = (permission: string) => async (req: FastifyRequest, _rep: F
     );
   }
   exigerPermission(req.utilisateur.role, permission);
+};
+
+/** Prehandler : exige au moins l'une des permissions (donnee partagee entre services). */
+export const exigeUne = (...permissions: string[]) => async (req: FastifyRequest, rep: FastifyReply) => {
+  await authentifier(req);
+  const accordee = permissions.find((p) => aLaPermission(req.utilisateur.role, p)) ?? permissions[0]!;
+  await exige(accordee)(req, rep);
 };

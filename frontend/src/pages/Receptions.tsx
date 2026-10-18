@@ -3,6 +3,7 @@ import { api, aujourdhui, fmtDate, fmtMontant, fmtNombre } from '../api';
 import { useAuth } from '../auth';
 import { Alerte, AlerteErreur, Badge, Champ, Chargement, Modale, useChargement, Vide } from '../composants/Ui';
 import { ImportExcel } from '../composants/ImportExcel';
+import { ChoixFournisseur } from '../composants/ChoixFournisseur';
 
 interface LigneSaisie {
   article_id: string; quantite: string; code_lot_fournisseur: string; dluo: string;
@@ -61,7 +62,6 @@ export function Receptions() {
 
 function ModaleReception({ onFermer, onCree }: { onFermer: () => void; onCree: () => void }) {
   const articles = useChargement(() => api.get('/articles'));
-  const fournisseurs = useChargement(() => api.get('/fournisseurs'));
   const [entete, setEntete] = useState({ fournisseur_id: '', date_reception: aujourdhui(), reference_bl_fournisseur: '', commentaire: '' });
   const [lignes, setLignes] = useState<LigneSaisie[]>([ligneVide()]);
   const [erreur, setErreur] = useState<unknown>(null);
@@ -118,12 +118,7 @@ function ModaleReception({ onFermer, onCree }: { onFermer: () => void; onCree: (
         responsable qualite.
       </Alerte>
       <div className="ligne-champs">
-        <Champ libelle="Fournisseur">
-          <select value={entete.fournisseur_id} onChange={(e) => setEntete({ ...entete, fournisseur_id: e.target.value })}>
-            <option value="">—</option>
-            {(fournisseurs.donnees ?? []).map((f: any) => <option key={f.id} value={f.id}>{f.raison_sociale}</option>)}
-          </select>
-        </Champ>
+        <ChoixFournisseur valeur={entete.fournisseur_id} onChange={(id) => setEntete({ ...entete, fournisseur_id: id })} />
         <Champ libelle="Date de reception" obligatoire>
           <input type="date" value={entete.date_reception} onChange={(e) => setEntete({ ...entete, date_reception: e.target.value })} />
         </Champ>
@@ -227,7 +222,6 @@ function ModaleDetailReception({ id, onFermer }: { id: number; onFermer: () => v
 
 /** Reception par fichier Excel : en-tete saisi ici, une ligne par lot dans le classeur. */
 function ImportReception({ onFermer, onTermine }: { onFermer: () => void; onTermine: () => void }) {
-  const fournisseurs = useChargement(() => api.get('/fournisseurs'));
   const [entete, setEntete] = useState({ fournisseur_id: '', date_reception: aujourdhui(), reference_bl_fournisseur: '' });
   return (
     <ImportExcel
@@ -245,12 +239,7 @@ function ImportReception({ onFermer, onTermine }: { onFermer: () => void; onTerm
         de chaque lot.</>}
       champsSaisie={
         <div className="ligne-champs" style={{ marginBottom: 12 }}>
-          <Champ libelle="Fournisseur">
-            <select value={entete.fournisseur_id} onChange={(e) => setEntete({ ...entete, fournisseur_id: e.target.value })}>
-              <option value="">—</option>
-              {(fournisseurs.donnees ?? []).map((f: any) => <option key={f.id} value={f.id}>{f.raison_sociale}</option>)}
-            </select>
-          </Champ>
+          <ChoixFournisseur valeur={entete.fournisseur_id} onChange={(id) => setEntete({ ...entete, fournisseur_id: id })} />
           <Champ libelle="Date de reception">
             <input type="date" value={entete.date_reception} onChange={(e) => setEntete({ ...entete, date_reception: e.target.value })} />
           </Champ>

@@ -50,6 +50,14 @@ export async function creerReception(
   lignes: LigneReception[],
 ) {
   if (lignes.length === 0) throw new ErreurMetier('RECEPTION_VIDE', 'Une reception doit comporter au moins une ligne.', 422);
+  if (entete.fournisseur_id) {
+    const fournisseur = await queryOne(client, 'SELECT raison_sociale, actif FROM fournisseurs WHERE id = $1', [entete.fournisseur_id]);
+    if (!fournisseur) throw introuvable('Fournisseur', entete.fournisseur_id);
+    if (!fournisseur.actif) {
+      throw new ErreurMetier('FOURNISSEUR_INACTIF',
+        `Le fournisseur ${fournisseur.raison_sociale} est desactive : le reactiver depuis l'ecran Fournisseurs avant de receptionner.`, 422);
+    }
+  }
   const numero = await genererNumero(client, 'REC');
   const reception = await queryOne(
     client,

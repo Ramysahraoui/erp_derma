@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, aujourdhui, fmtDate, fmtMontant } from '../api';
 import { useAuth } from '../auth';
 import { AlerteErreur, Badge, Champ, Chargement, Indicateur, Modale, Onglets, useChargement, Vide } from '../composants/Ui';
+import { ChoixFournisseur } from '../composants/ChoixFournisseur';
 
 export function Depenses() {
   const { peut } = useAuth();
@@ -115,7 +116,6 @@ export function Depenses() {
 
 function ModaleDepense({ onFermer, onCree }: { onFermer: () => void; onCree: () => void }) {
   const categories = useChargement(() => api.get('/depenses/categories'));
-  const fournisseurs = useChargement(() => api.get('/fournisseurs'));
   const ordres = useChargement(() => api.get('/of?limite=50'));
   const [form, setForm] = useState<any>({ date_depense: aujourdhui(), tva_pct: '19', montant_ht: '' });
   const [erreur, setErreur] = useState<unknown>(null);
@@ -165,12 +165,7 @@ function ModaleDepense({ onFermer, onCree }: { onFermer: () => void; onCree: () 
         </Champ>
       </div>
       <div className="ligne-champs" style={{ marginTop: 12 }}>
-        <Champ libelle="Fournisseur">
-          <select value={form.fournisseur_id ?? ''} onChange={(e) => setForm({ ...form, fournisseur_id: e.target.value })}>
-            <option value="">—</option>
-            {(fournisseurs.donnees ?? []).map((f: any) => <option key={f.id} value={f.id}>{f.raison_sociale}</option>)}
-          </select>
-        </Champ>
+        <ChoixFournisseur valeur={form.fournisseur_id ?? ''} onChange={(id) => setForm({ ...form, fournisseur_id: id })} />
         <Champ libelle="Imputation a un OF" aide="Charge directe rattachee au cout de revient">
           <select value={form.of_id ?? ''} onChange={(e) => setForm({ ...form, of_id: e.target.value })}>
             <option value="">—</option>

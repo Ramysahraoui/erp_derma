@@ -46,6 +46,7 @@ await etape('connexion', async () => {
 const pages = [
   ['tableau de bord', '/', 'Alertes de reapprovisionnement'],
   ['articles', '/articles', 'Code SKU'],
+  ['fournisseurs', '/fournisseurs', 'Raison sociale'],
   ['receptions', '/receptions', 'Numero'],
   ['lots', '/lots', 'Lot interne'],
   ['capacite', '/capacite', 'Selection des produits finis'],
@@ -222,6 +223,49 @@ await etape('V2 encaissement visible dans l etat du client', async () => {
   await page.screenshot({ path: process.env.CAPTURE_RELEVE ?? '/dev/null' }).catch(() => {});
   if (!/encaissement enc-/i.test(fiche) || !fiche.includes('12 500,00')) throw new Error('encaissement absent du releve');
   if (!/-12 500,00/.test(fiche)) throw new Error('solde du releve inattendu');
+  await page.click('.modale button[aria-label="Fermer"]');
+});
+
+await etape('fournisseurs : creation, modification tracee, desactivation', async () => {
+  await page.goto(base + '/fournisseurs', { waitUntil: 'networkidle' });
+  await page.click('button:has-text("Nouveau fournisseur")');
+  await page.waitForSelector('.modale');
+  const champs = await page.$$('.modale .ligne-champs input');
+  await champs[0].fill('frn-e2e');
+  await champs[1].fill('Emballages du Sahel');
+  await champs[2].fill('M. Haddad');
+  await page.click('.modale button:has-text("Creer le fournisseur")');
+  await page.waitForFunction(() => /FRN-E2E — Emballages du Sahel/.test(document.body.innerText), null, { timeout: 8000 });
+  await page.click('.modale button:has-text("Modifier la fiche")');
+  await page.waitForFunction(() => document.querySelectorAll('.modale').length === 2);
+  await page.fill('.modale >> nth=1 >> input[type=email]', 'achats@sahel.dz');
+  await page.click('.modale >> nth=1 >> button:has-text("Enregistrer les modifications")');
+  await page.waitForFunction(() => /1 modification\(s\) enregistree\(s\)/.test(document.body.innerText), null, { timeout: 8000 });
+  await page.click('.modale button[role=tab]:has-text("Historique")');
+  if (!(await page.innerText('.modale')).includes('achats@sahel.dz')) throw new Error('modification absente de l historique');
+  await page.click('.modale button:has-text("Desactiver le fournisseur")');
+  await page.waitForFunction(() => /Fournisseur desactive/.test(document.body.innerText), null, { timeout: 8000 });
+  await page.click('.modale button:has-text("Reactiver le fournisseur")');
+  await page.waitForFunction(() => !/Fournisseur desactive/.test(document.body.innerText), null, { timeout: 8000 });
+  await page.click('.modale button[aria-label="Fermer"]');
+  if (!(await page.innerText('table.tableau')).includes('FRN-E2E')) throw new Error('fournisseur absent de la liste');
+});
+
+await etape('fournisseurs : creation depuis le formulaire de reception', async () => {
+  await page.goto(base + '/receptions', { waitUntil: 'networkidle' });
+  await page.click('button:has-text("Saisir une reception")');
+  await page.waitForSelector('.modale');
+  await page.click('.modale button:has-text("+ Nouveau")');
+  await page.waitForFunction(() => document.querySelectorAll('.modale').length === 2);
+  const champs = await page.$$('.modale >> nth=1 >> input');
+  await champs[0].fill('FRN-VOLEE');
+  await champs[1].fill('Chimie du Littoral');
+  await page.click('.modale >> nth=1 >> button:has-text("Creer le fournisseur")');
+  await page.waitForFunction(() => document.querySelectorAll('.modale').length === 1);
+  await page.waitForFunction(() => {
+    const s = document.querySelector('.modale select');
+    return s && s.selectedOptions[0]?.textContent?.includes('Chimie du Littoral');
+  }, null, { timeout: 8000 });
   await page.click('.modale button[aria-label="Fermer"]');
 });
 

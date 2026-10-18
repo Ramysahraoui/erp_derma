@@ -104,7 +104,7 @@ une installation de production.**
 ## 4. Tests
 
 ```bash
-npm test            # 57 tests : installation, recette fonctionnelle, criteres V2, regles metier, unitaires
+npm test            # 62 tests : installation, recette fonctionnelle, criteres V2, regles metier, unitaires
 ```
 
 Le jeu de fichiers copie dans l'image backend se verifie sans construire

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ExceptionApi } from '../api';
 
 // ------------------------------- Etats -------------------------------
@@ -61,13 +61,18 @@ export const Badge = ({ valeur, classe }: { valeur: string | null | undefined; c
 export function Modale({ titre, onFermer, children, actions, large }: {
   titre: string; onFermer: () => void; children: ReactNode; actions?: ReactNode; large?: boolean;
 }) {
+  const fond = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const echap = (e: KeyboardEvent) => { if (e.key === 'Escape') onFermer(); };
+    // Echap ne ferme que la modale du dessus (ex. creation d'un fournisseur depuis une reception).
+    const echap = (e: KeyboardEvent) => {
+      const ouvertes = document.querySelectorAll('.modale-fond');
+      if (e.key === 'Escape' && ouvertes[ouvertes.length - 1] === fond.current) onFermer();
+    };
     document.addEventListener('keydown', echap);
     return () => document.removeEventListener('keydown', echap);
   }, [onFermer]);
   return (
-    <div className="modale-fond" onMouseDown={(e) => { if (e.target === e.currentTarget) onFermer(); }}>
+    <div className="modale-fond" ref={fond} onMouseDown={(e) => { if (e.target === e.currentTarget) onFermer(); }}>
       <div className="modale" style={large ? { width: 'min(1080px, 100%)' } : undefined} role="dialog" aria-modal="true" aria-label={titre}>
         <header>
           <h2>{titre}</h2>

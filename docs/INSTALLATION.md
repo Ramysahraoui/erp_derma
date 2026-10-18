@@ -107,8 +107,11 @@ parametrage d'exploitation necessaire au demarrage :
 3. **Articles** : creer les matieres premieres, les articles de conditionnement
    puis les produits finis (contenance en ml pour ces derniers), et la
    nomenclature de conditionnement de chaque produit fini.
-4. **Fournisseurs**, puis **Receptions** : saisir le stock existant avec les
-   numeros de lots fournisseurs, DLUO et certificats d'analyse.
+4. **Achats & stocks → Fournisseurs** (bouton « Nouveau fournisseur ») : creer
+   les fournisseurs. Un fournisseur manquant peut aussi etre cree depuis le
+   formulaire de reception ou de depense (bouton « + Nouveau » a cote de la
+   liste). Puis **Receptions** : saisir le stock existant avec les numeros de
+   lots fournisseurs et DLUO (certificat de conformite facultatif).
 5. **Formules** : saisir les formules (somme ponderale exactement 100,000 %)
    et les valider.
 6. **Clients** : fiches, plafonds d'encours et delais de reglement.

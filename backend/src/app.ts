@@ -10,6 +10,7 @@ import { ErreurMetier, traduireErreurPg } from './core/erreurs.js';
 
 import { routesAuth } from './modules/auth/routes.js';
 import { routesArticles } from './modules/articles/routes.js';
+import { routesFournisseurs } from './modules/fournisseurs/routes.js';
 import { routesStock } from './modules/stock/routes.js';
 import { routesCapacite } from './modules/capacite/routes.js';
 import { routesFormules } from './modules/formules/routes.js';
@@ -69,6 +70,7 @@ export async function construireApp(): Promise<FastifyInstance> {
 
   await app.register(routesAuth, { prefix: '/api/auth' });
   await app.register(routesArticles, { prefix: '/api' });
+  await app.register(routesFournisseurs, { prefix: '/api' });
   await app.register(routesStock, { prefix: '/api' });
   await app.register(routesCapacite, { prefix: '/api/capacite' });
   await app.register(routesFormules, { prefix: '/api/formules' });

@@ -7,6 +7,7 @@ import { d, m2, p4, q3, Decimal } from '../../core/nombres.js';
 import { verifierMotDePasse } from '../../core/auth.js';
 import { ROLES_SUPERVISEUR } from '../../core/rbac.js';
 import { ecrireMouvement } from '../stock/service.js';
+import { imputerAvoirsClient } from '../recouvrement/service.js';
 
 export type TypeDoc = 'DEVIS' | 'BC' | 'BL' | 'FACTURE';
 
@@ -43,6 +44,9 @@ export interface EtatEncours {
   encours_facture: string;
   encours_livre_non_facture: string;
   encours_echu: string;
+  /** Part des encaissements non encore imputee sur une facture. */
+  avoir_disponible: string;
+  /** Exposition reelle : factures dues + livre non facture - avoir. */
   encours_total: string;
   disponible: string;
   bloque: boolean;
@@ -51,7 +55,10 @@ export interface EtatEncours {
 export async function etatEncours(db: Db, clientId: number): Promise<EtatEncours> {
   const e = await queryOne(db, 'SELECT * FROM v_encours_clients WHERE client_id = $1', [clientId]);
   if (!e) throw introuvable('Client', clientId);
-  const total = d(e.encours_facture).plus(e.encours_livre_non_facture);
+  // Un encaissement non encore impute (acompte, paiement d'un BL non facture)
+  // reduit l'exposition du client des sa saisie ; un solde negatif est un
+  // credit en faveur du client, qui augmente d'autant son disponible.
+  const total = d(e.encours_facture).plus(e.encours_livre_non_facture).minus(e.avoir_disponible);
   return {
     client_id: e.client_id,
     raison_sociale: e.raison_sociale,
@@ -59,6 +66,7 @@ export async function etatEncours(db: Db, clientId: number): Promise<EtatEncours
     encours_facture: m2(e.encours_facture),
     encours_livre_non_facture: m2(e.encours_livre_non_facture),
     encours_echu: m2(e.encours_echu),
+    avoir_disponible: m2(e.avoir_disponible),
     encours_total: m2(total),
     disponible: m2(d(e.plafond_credit).minus(total)),
     bloque: e.bloque,
@@ -141,6 +149,9 @@ export async function creerDocument(
     if (!article) throw introuvable('Article', l.article_id);
     if (article.type !== 'PF') {
       throw new ErreurMetier('ARTICLE_NON_VENDABLE', `Seul un produit fini peut etre vendu (${article.code_sku}).`, 422);
+    }
+    if (!article.actif) {
+      throw new ErreurMetier('ARTICLE_INDISPONIBLE', `Le produit ${article.code_sku} est indisponible a la vente.`, 422);
     }
     if (params.type_doc === 'BL' && !l.lot_pf_id) {
       throw new ErreurMetier(
@@ -278,10 +289,15 @@ export async function validerDocument(client: pg.PoolClient, utilisateurId: numb
       WHERE id = $1 RETURNING *`,
     [documentId, utilisateurId, m2(marge)],
   );
+  // Un avoir du client (encaissement anterieur non impute) solde d'emblee la
+  // nouvelle facture, dans l'ordre des echeances.
+  const imputations = doc.type_doc === 'FACTURE' ? await imputerAvoirsClient(client, doc.client_id) : [];
   await tracer(client, utilisateurId, `VALIDATION_${doc.type_doc}`, 'ventes_documents', documentId, {
-    numero_piece: doc.numero_piece, marge_brute: m2(marge),
+    numero_piece: doc.numero_piece, marge_brute: m2(marge), imputations_automatiques: imputations,
   });
-  return maj;
+  return imputations.length
+    ? queryOne(client, 'SELECT * FROM ventes_documents WHERE id = $1', [documentId])
+    : maj;
 }
 
 /** Transformation d'une piece en piece aval (devis -> BC -> BL -> facture). */

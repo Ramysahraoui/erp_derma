@@ -4,7 +4,7 @@ Les six scenarios du cahier des charges sont automatises et rejoues a chaque
 execution de la suite de tests.
 
 ```bash
-npm test          # 44 tests, dont les 6 scenarios de recette
+npm test          # 57 tests, dont les 6 scenarios de recette et les 5 criteres V2
 ```
 
 La suite recree integralement la base de test, applique les migrations, injecte
@@ -13,6 +13,7 @@ le jeu de demonstration, puis deroule des cycles industriels complets
 
 Fichiers : `backend/tests/recette.test.ts` (acceptation),
 `backend/tests/metier.test.ts` (regles industrielles et financieres),
+`backend/tests/v2.test.ts` (criteres de validation V2),
 `backend/tests/installation.test.ts` (amorcage d'un site neuf et securite des
 comptes), `backend/tests/unitaires.test.ts` (calculs purs).
 
@@ -57,10 +58,8 @@ limitant et du volume maximal possible.
 - l'affectation forcee par appel direct a l'API est refusee
   (**422 `PESEE_LOT_NON_CONFORME`**, trigger `fn_pesee_lot_valide`) ;
 - un operateur de production ne peut pas liberer le lot lui-meme (**403**) ;
-- la liberation est refusee tant que le certificat d'analyse n'est pas joint
-  (**422 `COA_MANQUANT`**) ;
-- certificat depose puis liberation par la qualite : le lot redevient disponible
-  a la pesee.
+- liberation par la qualite (le certificat est facultatif depuis la V2) : le
+  lot redevient disponible a la pesee.
 
 ## TEST-04 — BL depassant le plafond de credit
 
@@ -128,19 +127,29 @@ les lots de PF generes et la liste nominative des clients livres.
 | FEFO | Service des lots par peremption croissante, couverture complete |
 | Tolerance de pesee | Refus a +5 %, forcage interdit a l'operateur, acceptation qualite tracee et marquee non conforme |
 | Cloture d'OF | Fabrication bloquee tant qu'une pesee manque ; `UPDATE` SQL direct refuse par le trigger |
-| Certificat d'analyse | Reception sans CoA ni motif refusee ; reception motivee forcee en quarantaine ; liberation refusee (API et SQL direct) ; possible apres depot du document |
+| Certificat de conformite | Facultatif : reception et liberation sans certificat, depot ulterieur sur la fiche du lot |
 | Audit trail | `DELETE` refuse sur mouvements, pesees, lots, OF, vracs ; `UPDATE` d'un mouvement refuse |
 | Lot de PF | Creation impossible sans lot de vrac libere |
 | CRU | Coherence somme des composantes / unites produites ; main d'oeuvre au taux parametre ; lot de PF valorise au cout reel |
 | Rendement | Calcul reel et decrementation du vrac au conditionnement |
 | Liberation de cuve | Refus si pH hors specification |
 | Chaine documentaire | Devis -> BC -> BL -> Facture, decrementation de stock a la validation du BL, echeance et marge |
-| Encaissements | Multi-factures, paiement partiel, refus d'affectation superieure au solde, cheque impaye annulant l'apurement |
+| Encaissements | Multi-factures, paiement partiel, refus d'affectation superieure au solde, cheque impaye annulant l'apurement sans double decompte |
 | Balance agee | Ventilation correcte en tranche 31-60 jours |
 | Capacite | Goulot identifie et commande d'achat generee |
 | RBAC | Cloisonnement de l'operateur atelier, refus d'acces anonyme |
 | Documents | Dossier de lot, bon de pesee, BL avec numeros de lots, etiquette code-barres, rendu PDF reel |
 | Journal d'audit | Presence des actions sensibles, horodatage et utilisateur nominatif |
+
+## Criteres de validation V2 (`v2.test.ts`)
+
+| Critere | Verification |
+|---|---|
+| 1. Import de plusieurs articles | Modele telechargeable aux colonnes attendues ; apercu sans ecriture ; doublon referentiel, doublon fichier, champ obligatoire vide, format invalide et regle de categorie rejetes avec motif ; lignes valides creees ; fichier non Excel refuse ; operateur d'atelier refuse (403) |
+| 2. Modification tracee | Code, disponibilite et prix modifies avec ancienne / nouvelle valeur, utilisateur et date ; lots, mouvements et documents toujours rattaches sous le nouveau code ; code deja attribue refuse (409) ; produit inactif non vendable |
+| 3. Reception par Excel | Reception creee sans certificat, lots liberables, certificat joint ensuite ; article inconnu, produit fini, quantite nulle, date invalide, lot en double rejetes ; fichier entierement invalide sans effet |
+| 4. Ajustements et lots rejetes | Augmentation et reduction tracees comme mouvements (utilisateur, motif) ; reduction excessive refusee ; sortie de `REJETE` par la voie normale refusee ; reintroduction motivee, rejet conserve dans l'historique |
+| 5. Encaissement et etat client | Encaissement sans ventilation impute sur la facture la plus ancienne, excedent en avoir impute sur la facture suivante ; releve (factures, encaissements, solde progressif) exact ; cheque impaye puis represente sans double compte ni recredit ; paiement avant facturation reduisant l'encours au regard du plafond |
 
 ## Validation complementaire de l'interface
 
@@ -148,7 +157,11 @@ Un parcours navigateur (Chromium) a ete execute sur l'ensemble des ecrans :
 connexion, quinze pages fonctionnelles, editeur de formule (indicateur de somme
 ponderale), simulateur de capacite, creation d'un OF avec simulation de
 faisabilite, ecran de pesee tactile (selection FEFO, clavier numerique,
-validation d'une pesee). Aucune erreur console n'est remontee.
+validation d'une pesee), puis les parcours V2 : import d'articles depuis le
+modele (apercu, compte rendu), modification tracee, reception par Excel sans
+certificat, ajustement et reintroduction d'un lot rejete, encaissement visible
+dans le releve du client avec le solde attendu. Aucune erreur console n'est
+remontee.
 
 Les code-barres Code 128 produits pour les etiquettes de lots ont ete relus avec
 succes par un decodeur tiers (ZXing) sur les formats `LOT-MP-…`, `VRAC-…`,

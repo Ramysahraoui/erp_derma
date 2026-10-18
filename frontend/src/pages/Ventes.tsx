@@ -205,7 +205,7 @@ export function ModaleVente({ onFermer, onCree }: { onFermer: () => void; onCree
                   <td>
                     <select value={l.article_id} onChange={(e) => majLigne(i, 'article_id', e.target.value)}>
                       <option value="">Selectionner…</option>
-                      {(produits.donnees ?? []).map((p: any) => <option key={p.id} value={p.id}>{p.code_sku} — {p.designation}</option>)}
+                      {(produits.donnees ?? []).filter((p: any) => p.actif).map((p: any) => <option key={p.id} value={p.id}>{p.code_sku} — {p.designation}</option>)}
                     </select>
                   </td>
                   {exigeLot && (

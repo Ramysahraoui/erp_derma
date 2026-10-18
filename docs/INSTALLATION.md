@@ -130,7 +130,7 @@ parametrage d'exploitation necessaire au demarrage :
 | Redemarrer apres modification du `.env` | `docker compose up -d` |
 | Sauvegarder | `./sauvegarde.sh` |
 | Restaurer | `./sauvegarde.sh --restaurer sauvegardes/erp-AAAAMMJJ-HHMMSS.dump` |
-| Mettre a jour | `git pull && ./installer.sh` |
+| Mettre a jour | `git pull && ./installer.sh` (passage en V2 compris : les migrations s'appliquent seules au demarrage, voir `docs/CDCF-V2.md`) |
 
 Les trois services redemarrent automatiquement avec le serveur
 (`restart: unless-stopped`) : apres une coupure de courant, l'application

@@ -7,7 +7,9 @@ import { dossierDeLot } from '../production/service.js';
 import { htmlVersPdf, pdfDisponible } from './pdf.js';
 import {
   modeleBonDePesee, modeleCommandeAchat, modeleDocumentVente, modeleEtiquetteLot, modeleFicheSuiveuse,
+  modeleReleveClient,
 } from './modeles.js';
+import { releveClient } from '../recouvrement/service.js';
 
 const schemaFormat = z.object({ format: z.enum(['pdf', 'html']).default('pdf') });
 
@@ -62,6 +64,13 @@ export async function routesDocuments(app: FastifyInstance): Promise<void> {
       [id],
     );
     return servir(rep, modeleDocumentVente({ ...doc, lignes }), `${doc.type_doc}-${doc.numero_piece}`, format);
+  });
+
+  app.get('/clients/:id/releve', { preHandler: exige('client:lire') }, async (req, rep) => {
+    const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params);
+    const { format } = schemaFormat.parse(req.query);
+    const releve = await releveClient(pool, id);
+    return servir(rep, modeleReleveClient(releve), `releve-${releve.client.code}`, format);
   });
 
   app.get('/lots/:id/etiquette', { preHandler: exige('stock:lire') }, async (req, rep) => {

@@ -100,7 +100,7 @@ export function Recouvrement() {
             {encaissements.enCours && !encaissements.donnees ? <Chargement /> : !encaissements.donnees?.length ? <Vide /> : (
               <table className="tableau">
                 <thead><tr><th>Numero</th><th>Client</th><th>Date</th><th>Mode</th>
-                  <th className="num">Montant</th><th className="num">Affecte</th><th>Factures apurees</th></tr></thead>
+                  <th className="num">Montant</th><th className="num">Impute</th><th className="num">Avoir restant</th><th>Factures apurees</th></tr></thead>
                 <tbody>
                   {encaissements.donnees.map((e: any) => (
                     <tr key={e.id}>
@@ -110,7 +110,16 @@ export function Recouvrement() {
                       <td><Badge valeur={e.mode_reglement} classe="info" />{e.cheque_statut && <> <Badge valeur={e.cheque_statut} /></>}</td>
                       <td className="num">{fmtMontant(e.montant_verse)}</td>
                       <td className="num">{fmtMontant(e.montant_affecte)}</td>
-                      <td className="secondaire">{(e.affectations ?? []).map((a: any) => a.numero_piece).join(', ') || '—'}</td>
+                      <td className="num">{e.cheque_statut === 'IMPAYE' ? '—' : Number(e.reste_non_impute) > 0 ? fmtMontant(e.reste_non_impute) : '—'}</td>
+                      <td className="secondaire">
+                        {(e.affectations ?? []).map((a: any, i: number) => (
+                          <div key={i} style={a.annulee ? { textDecoration: 'line-through' } : undefined}>
+                            {a.numero_piece} · {fmtMontant(a.montant_affecte)}{a.origine === 'AUTOMATIQUE' ? ' (auto)' : ''}
+                            {a.annulee ? ' — annule (impaye)' : ''}
+                          </div>
+                        ))}
+                        {!(e.affectations ?? []).length && '—'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -270,8 +279,10 @@ function ModaleEncaissement({ onFermer, onCree }: { onFermer: () => void; onCree
 
       <h3 style={{ margin: '18px 0 8px' }}>Affectation aux factures ouvertes</h3>
       <Alerte type="info">
-        Un meme reglement peut apurer plusieurs factures, ou n'en solder qu'une partie.
-        Affecte : {fmtMontant(totalAffecte)} sur {fmtMontant(form.montant_verse || 0)}.
+        Ventilation facultative : un meme reglement peut apurer plusieurs factures, ou n'en solder qu'une partie.
+        La part non ventilee ({fmtMontant(Math.max(0, Number(form.montant_verse || 0) - totalAffecte))}) est imputee
+        automatiquement sur les factures les plus anciennes ; un excedent reste en avoir sur le compte du client
+        et s'impute sur ses prochaines factures.
       </Alerte>
       <div className="tableau-conteneur">
         <table className="tableau">

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { api, fmtMontant, fmtNombre } from '../api';
+import { api, fmtDateHeure, fmtMontant, fmtNombre } from '../api';
 import { useAuth } from '../auth';
-import { Alerte, AlerteErreur, Badge, Champ, Chargement, Modale, useChargement, Vide } from '../composants/Ui';
+import { Alerte, AlerteErreur, Badge, Champ, Chargement, Modale, Onglets, useChargement, Vide } from '../composants/Ui';
+import { ImportExcel } from '../composants/ImportExcel';
 
 const UNITES: Record<string, string[]> = { MP: ['kg', 'g', 'L', 'ml'], AC: ['U'], PF: ['U'] };
 
@@ -11,10 +12,14 @@ export function Articles() {
   const [recherche, setRecherche] = useState('');
   const [creation, setCreation] = useState(false);
   const [detail, setDetail] = useState<number | null>(null);
+  const [disponibilite, setDisponibilite] = useState('');
+  const [importation, setImportation] = useState(false);
 
   const liste = useChargement(
-    () => api.get(`/articles?${new URLSearchParams({ ...(type ? { type } : {}), ...(recherche ? { recherche } : {}) })}`),
-    [type, recherche],
+    () => api.get(`/articles?${new URLSearchParams({
+      ...(type ? { type } : {}), ...(recherche ? { recherche } : {}), ...(disponibilite ? { actif: disponibilite } : {}),
+    })}`),
+    [type, recherche, disponibilite],
   );
 
   return (
@@ -31,7 +36,15 @@ export function Articles() {
             <option value="PF">Produits finis</option>
           </select>
         </Champ>
+        <Champ libelle="Disponibilite">
+          <select value={disponibilite} onChange={(e) => setDisponibilite(e.target.value)}>
+            <option value="">Tous</option>
+            <option value="true">Disponibles</option>
+            <option value="false">Indisponibles</option>
+          </select>
+        </Champ>
         <div style={{ flex: 1 }} />
+        {peut('article:ecrire') && <button className="bouton" onClick={() => setImportation(true)}>Importer depuis Excel</button>}
         {peut('article:ecrire') && <button className="bouton primaire" onClick={() => setCreation(true)}>Nouvel article</button>}
       </div>
 
@@ -50,7 +63,7 @@ export function Articles() {
               <tbody>
                 {liste.donnees.map((a: any) => (
                   <tr key={a.id} className="cliquable" onClick={() => setDetail(a.id)}>
-                    <td><strong>{a.code_sku}</strong></td>
+                    <td><strong>{a.code_sku}</strong>{!a.actif && <div><Badge valeur="INDISPONIBLE" classe="danger" /></div>}</td>
                     <td>{a.designation}<div className="secondaire">{a.nom_inci ?? ''}</div></td>
                     <td><Badge valeur={a.type} classe="info" /></td>
                     <td className="num" style={a.sous_seuil ? { color: 'var(--danger)', fontWeight: 700 } : undefined}>
@@ -70,6 +83,23 @@ export function Articles() {
 
       {creation && <ModaleArticle onFermer={() => setCreation(false)} onCree={() => { setCreation(false); liste.recharger(); }} />}
       {detail && <ModaleDetail id={detail} onFermer={() => setDetail(null)} onMaj={liste.recharger} />}
+      {importation && (
+        <ImportExcel
+          titre="Import d'articles depuis Excel"
+          base="/imports/articles"
+          nomModele="modele-import-articles.xlsx"
+          colonnes={[
+            { cle: 'code_sku', libelle: 'Code' }, { cle: 'designation', libelle: 'Designation' },
+            { cle: 'type', libelle: 'Type' }, { cle: 'unite', libelle: 'Unite' },
+            { cle: 'prix_vente_ht', libelle: 'Prix de vente' }, { cle: 'disponible', libelle: 'Disponible' },
+          ]}
+          explication={<>Telecharger le modele, le remplir (une ligne par article) puis le deposer ici. Le systeme
+            controle chaque ligne avant import : codes en double (fichier ou referentiel), champs obligatoires,
+            formats et regles de categorie. Seules les lignes valides sont importees.</>}
+          onFermer={() => setImportation(false)}
+          onTermine={() => liste.recharger()}
+        />
+      )}
     </>
   );
 }
@@ -151,6 +181,9 @@ function ModaleDetail({ id, onFermer, onMaj }: { id: number; onFermer: () => voi
   const tousAc = useChargement(() => api.get('/articles?type=AC'));
   const [nomenclature, setNomenclature] = useState<any[] | null>(null);
   const [erreur, setErreur] = useState<unknown>(null);
+  const [onglet, setOnglet] = useState('fiche');
+  const [edition, setEdition] = useState<{ code_sku: string; actif: boolean; prix_vente_ht: string } | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   if (detail.enCours && !detail.donnees) return <Modale titre="Article" onFermer={onFermer}><Chargement /></Modale>;
   if (detail.erreur) return <Modale titre="Article" onFermer={onFermer}><AlerteErreur erreur={detail.erreur} /></Modale>;
@@ -169,9 +202,99 @@ function ModaleDetail({ id, onFermer, onMaj }: { id: number; onFermer: () => voi
     } catch (e) { setErreur(e); }
   };
 
+  const enregistrerModification = async () => {
+    if (!edition) return;
+    setErreur(null); setMessage(null);
+    try {
+      const maj = await api.patch(`/articles/${id}`, {
+        code_sku: edition.code_sku, actif: edition.actif, prix_vente_ht: Number(edition.prix_vente_ht || 0),
+      });
+      setMessage(maj.modifications_enregistrees
+        ? `${maj.modifications_enregistrees} modification(s) enregistree(s) et tracee(s).`
+        : 'Aucune valeur modifiee.');
+      setEdition(null);
+      detail.recharger();
+      onMaj();
+    } catch (e) { setErreur(e); }
+  };
+
+  const LIBELLES_CHAMPS: Record<string, string> = {
+    code_sku: 'Code', actif: 'Disponibilite', prix_vente_ht: 'Prix de vente HT', designation: 'Designation',
+    seuil_critique: 'Seuil critique', tva_pct: 'TVA', contenance_ml: 'Contenance', densite: 'Masse volumique', nom_inci: 'Nom INCI',
+  };
+  const valeurLisible = (champ: string, v: string | null) =>
+    v === null ? '—' : champ === 'actif' ? (v === 'true' ? 'Disponible' : 'Indisponible') : v;
+
   return (
     <Modale large titre={`${a.code_sku} — ${a.designation}`} onFermer={onFermer}>
       <AlerteErreur erreur={erreur} />
+      {message && <Alerte type="succes">{message}</Alerte>}
+      {!a.actif && <Alerte type="attention" titre="Article indisponible">
+        Il n'est plus propose a la saisie (reception, formulation, vente). Son historique reste consultable.</Alerte>}
+
+      <Onglets actif={onglet} onChange={setOnglet} onglets={[
+        { cle: 'fiche', libelle: 'Fiche' },
+        { cle: 'historique', libelle: `Historique des modifications (${a.modifications?.length ?? 0})` },
+      ]} />
+
+      {onglet === 'historique' && (
+        <div className="tableau-conteneur">
+          <table className="tableau">
+            <thead><tr><th>Date</th><th>Utilisateur</th><th>Champ</th><th>Ancienne valeur</th><th>Nouvelle valeur</th></tr></thead>
+            <tbody>
+              {(a.modifications ?? []).map((m: any) => (
+                <tr key={m.id}>
+                  <td>{fmtDateHeure(m.cree_le)}</td>
+                  <td>{m.utilisateur ?? '—'}</td>
+                  <td><strong>{LIBELLES_CHAMPS[m.champ] ?? m.champ}</strong></td>
+                  <td className="secondaire">{valeurLisible(m.champ, m.ancienne_valeur)}</td>
+                  <td>{valeurLisible(m.champ, m.nouvelle_valeur)}</td>
+                </tr>
+              ))}
+              {!(a.modifications ?? []).length && <tr><td colSpan={5}><Vide texte="Aucune modification depuis la creation." /></td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {onglet === 'fiche' && <>
+      {peut('article:ecrire') && (
+        <div className="carte" style={{ marginBottom: 14 }}>
+          <div className="corps">
+            {edition ? (
+              <>
+                <div className="ligne-champs">
+                  <Champ libelle="Code article" obligatoire aide="Unique ; l'historique reste rattache a l'article">
+                    <input value={edition.code_sku} onChange={(e) => setEdition({ ...edition, code_sku: e.target.value.toUpperCase() })} />
+                  </Champ>
+                  <Champ libelle="Disponibilite">
+                    <select value={String(edition.actif)} onChange={(e) => setEdition({ ...edition, actif: e.target.value === 'true' })}>
+                      <option value="true">Disponible</option>
+                      <option value="false">Indisponible</option>
+                    </select>
+                  </Champ>
+                  <Champ libelle="Prix de vente HT">
+                    <input type="number" step="0.01" min="0" value={edition.prix_vente_ht}
+                      onChange={(e) => setEdition({ ...edition, prix_vente_ht: e.target.value })} />
+                  </Champ>
+                </div>
+                <div className="actions" style={{ marginTop: 10 }}>
+                  <button className="bouton" onClick={() => setEdition(null)}>Annuler</button>
+                  <button className="bouton primaire" onClick={enregistrerModification} disabled={edition.code_sku.trim().length < 2}>
+                    Enregistrer la modification</button>
+                </div>
+              </>
+            ) : (
+              <div className="actions">
+                <button className="bouton" onClick={() => setEdition({
+                  code_sku: a.code_sku, actif: a.actif, prix_vente_ht: String(Number(a.prix_vente_ht)),
+                })}>Modifier le code, la disponibilite ou le prix</button>
+                <span className="secondaire">Chaque modification est tracee (utilisateur, date, ancienne et nouvelle valeur).</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       <dl className="liste-descriptive">
         <dt>Categorie</dt><dd><Badge valeur={a.type} classe="info" /></dd>
         <dt>Unite de gestion</dt><dd>{a.unite}</dd>
@@ -181,6 +304,10 @@ function ModaleDetail({ id, onFermer, onMaj }: { id: number; onFermer: () => voi
         <dt>Quarantaine / bloque</dt><dd>{fmtNombre(a.qte_quarantaine)} / {fmtNombre(a.qte_bloquee)} {a.unite}</dd>
         <dt>PAMP</dt><dd>{fmtMontant(a.pamp)}</dd>
         <dt>Valeur du stock</dt><dd>{fmtMontant(a.valeur_stock)}</dd>
+        <dt>Prix de vente HT</dt><dd>{fmtMontant(a.prix_vente_ht)}</dd>
+        <dt>Disponibilite</dt><dd><Badge valeur={a.actif ? 'DISPONIBLE' : 'INDISPONIBLE'} classe={a.actif ? 'succes' : 'danger'} /></dd>
+        {a.activite && <><dt>Historique rattache</dt><dd>{a.activite.lots} lot(s), {a.activite.mouvements} mouvement(s),
+          {' '}{a.activite.documents_vente} document(s) de vente, {a.activite.formules} formule(s)</dd></>}
       </dl>
 
       {a.type === 'PF' && (
@@ -197,7 +324,7 @@ function ModaleDetail({ id, onFermer, onMaj }: { id: number; onFermer: () => voi
                         <select value={l.article_ac_id} onChange={(e) => {
                           const copie = [...lignes]; copie[i] = { ...l, article_ac_id: e.target.value }; setNomenclature(copie);
                         }}>
-                          {(tousAc.donnees ?? []).map((ac: any) => <option key={ac.id} value={ac.id}>{ac.code_sku} — {ac.designation}</option>)}
+                          {(tousAc.donnees ?? []).filter((ac: any) => ac.actif || String(ac.id) === String(l.article_ac_id)).map((ac: any) => <option key={ac.id} value={ac.id}>{ac.code_sku} — {ac.designation}</option>)}
                         </select>
                       ) : `${l.code_sku} — ${l.designation}`}
                     </td>
@@ -219,7 +346,7 @@ function ModaleDetail({ id, onFermer, onMaj }: { id: number; onFermer: () => voi
           </div>
           {peut('article:ecrire') && (
             <div className="actions" style={{ marginTop: 10 }}>
-              <button className="bouton petit" onClick={() => setNomenclature([...lignes, { article_ac_id: tousAc.donnees?.[0]?.id, qte_par_unite: 1 }])}>
+              <button className="bouton petit" onClick={() => setNomenclature([...lignes, { article_ac_id: (tousAc.donnees ?? []).find((ac: any) => ac.actif)?.id, qte_par_unite: 1 }])}>
                 Ajouter un composant
               </button>
               <button className="bouton petit primaire" onClick={enregistrerNomenclature} disabled={!nomenclature}>Enregistrer la nomenclature</button>
@@ -252,6 +379,7 @@ function ModaleDetail({ id, onFermer, onMaj }: { id: number; onFermer: () => voi
           Un lot de produit fini ne peut naitre que du conditionnement d'un lot de vrac libere par le controle qualite.
         </Alerte>
       )}
+      </>}
     </Modale>
   );
 }

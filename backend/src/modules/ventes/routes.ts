@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { booleenRequete } from '../../core/requete.js';
 import { pool, query, queryOne, transaction } from '../../db/pool.js';
 import { introuvable } from '../../core/erreurs.js';
 import { exige } from '../../core/auth.js';
@@ -8,6 +9,7 @@ import {
   annulerDocument, creerDocument, etatEncours, lotsPfDisponibles,
   transformerDocument, validerDocument,
 } from './service.js';
+import { releveClient } from '../recouvrement/service.js';
 
 const schemaDeblocage = z
   .object({ email: z.string().email(), mot_de_passe: z.string().min(1), motif: z.string().optional().nullable() })
@@ -27,12 +29,12 @@ const schemaLigne = z.object({
 export async function routesVentes(app: FastifyInstance): Promise<void> {
   // ------------------------------ Clients ----------------------------
   app.get('/clients', { preHandler: exige('client:lire') }, async (req) => {
-    const f = z.object({ recherche: z.string().optional(), actif: z.coerce.boolean().optional() }).parse(req.query);
+    const f = z.object({ recherche: z.string().optional(), actif: booleenRequete().optional() }).parse(req.query);
     return query(
       pool,
-      `SELECT c.*, e.encours_facture, e.encours_echu, e.encours_livre_non_facture,
-              (e.encours_facture + e.encours_livre_non_facture) AS encours_total,
-              (c.plafond_credit - e.encours_facture - e.encours_livre_non_facture) AS credit_disponible
+      `SELECT c.*, e.encours_facture, e.encours_echu, e.encours_livre_non_facture, e.avoir_disponible,
+              (e.encours_facture + e.encours_livre_non_facture - e.avoir_disponible) AS encours_total,
+              (c.plafond_credit - (e.encours_facture + e.encours_livre_non_facture - e.avoir_disponible)) AS credit_disponible
          FROM clients c JOIN v_encours_clients e ON e.client_id = c.id
         WHERE ($1::text IS NULL OR c.raison_sociale ILIKE '%'||$1||'%' OR c.code ILIKE '%'||$1||'%')
           AND ($2::boolean IS NULL OR c.actif = $2)
@@ -126,6 +128,12 @@ export async function routesVentes(app: FastifyInstance): Promise<void> {
     if (!c) throw introuvable('Client', id);
     await tracer(pool, req.utilisateur.id, 'MAJ_CLIENT', 'clients', id, b);
     return c;
+  });
+
+  // Etat client : factures, encaissements et solde restant du.
+  app.get('/clients/:id/releve', { preHandler: exige('client:lire') }, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params);
+    return releveClient(pool, id);
   });
 
   app.get('/clients/:id/encours', { preHandler: exige('client:lire') }, async (req) => {

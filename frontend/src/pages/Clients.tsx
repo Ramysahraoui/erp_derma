@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { api, fmtDate, fmtMontant } from '../api';
+
+const NATURES: Record<string, string> = { FACTURE: 'Facture', ENCAISSEMENT: 'Encaissement', IMPAYE: 'Impaye', REPRESENTATION: 'Representation' };
 import { useAuth } from '../auth';
-import { Alerte, AlerteErreur, Badge, Champ, Chargement, Indicateur, Modale, useChargement, Vide } from '../composants/Ui';
+import { Alerte, AlerteErreur, Badge, Champ, Chargement, Indicateur, Modale, Onglets, useChargement, Vide } from '../composants/Ui';
 
 export function Clients() {
   const { peut } = useAuth();
@@ -111,8 +113,10 @@ function ModaleClient({ onFermer, onCree }: { onFermer: () => void; onCree: () =
 function ModaleDetailClient({ id, onFermer, onMaj }: { id: number; onFermer: () => void; onMaj: () => void }) {
   const { peut } = useAuth();
   const detail = useChargement(() => api.get(`/clients/${id}`), [id]);
+  const releve = useChargement(() => api.get(`/clients/${id}/releve`), [id]);
   const [plafond, setPlafond] = useState<string | null>(null);
   const [erreur, setErreur] = useState<unknown>(null);
+  const [onglet, setOnglet] = useState('releve');
 
   if (detail.enCours && !detail.donnees) return <Modale titre="Client" onFermer={onFermer}><Chargement /></Modale>;
   const c = detail.donnees!;
@@ -135,11 +139,14 @@ function ModaleDetailClient({ id, onFermer, onMaj }: { id: number; onFermer: () 
     <Modale large titre={`${c.code} — ${c.raison_sociale}`} onFermer={onFermer}>
       <AlerteErreur erreur={erreur} />
       <div className="grille quatre" style={{ marginBottom: 16 }}>
-        <Indicateur libelle="Plafond autorise" valeur={fmtMontant(c.encours.plafond_credit)} />
+        <Indicateur libelle="Solde restant du" valeur={fmtMontant(releve.donnees?.totaux.solde_restant_du ?? c.encours.encours_facture)}
+          detail={Number(c.encours.avoir_disponible) > 0 ? `Avoir non impute : ${fmtMontant(c.encours.avoir_disponible)}` : 'Factures moins encaissements'}
+          ton={Number(releve.donnees?.totaux.solde_restant_du ?? 0) > 0 ? 'alerte' : 'succes'} />
         <Indicateur libelle="Encours total" valeur={fmtMontant(c.encours.encours_total)}
           detail={`Factures ${fmtMontant(c.encours.encours_facture)} · livre non facture ${fmtMontant(c.encours.encours_livre_non_facture)}`} />
         <Indicateur libelle="Encours echu" valeur={fmtMontant(c.encours.encours_echu)} ton="danger" />
         <Indicateur libelle="Credit disponible" valeur={fmtMontant(c.encours.disponible)}
+          detail={`Plafond ${fmtMontant(c.encours.plafond_credit)}`}
           ton={Number(c.encours.disponible) < 0 ? 'danger' : 'succes'} />
       </div>
 
@@ -157,7 +164,74 @@ function ModaleDetailClient({ id, onFermer, onMaj }: { id: number; onFermer: () 
         </div>
       )}
 
-      <h3>Historique documentaire</h3>
+      <Onglets actif={onglet} onChange={setOnglet} onglets={[
+        { cle: 'releve', libelle: 'Releve de compte' },
+        { cle: 'ouvertes', libelle: `Factures restant dues (${releve.donnees?.factures_ouvertes.length ?? 0})` },
+        { cle: 'documents', libelle: 'Historique documentaire' },
+      ]} />
+
+      {onglet === 'releve' && (
+        releve.enCours && !releve.donnees ? <Chargement /> : releve.erreur ? <AlerteErreur erreur={releve.erreur} /> : (
+          <>
+            <div className="actions" style={{ marginBottom: 10, justifyContent: 'space-between' }}>
+              <span className="secondaire">
+                Facture {fmtMontant(releve.donnees.totaux.total_facture)} · encaisse {fmtMontant(releve.donnees.totaux.total_encaisse)}
+                {Number(releve.donnees.totaux.total_impaye) > 0 && ` · impayes ${fmtMontant(releve.donnees.totaux.total_impaye)}`}
+              </span>
+              <button className="bouton petit" onClick={() => api.ouvrirDocument(`/documents/clients/${id}/releve`).catch(setErreur)}>
+                Imprimer le releve</button>
+            </div>
+            <div className="tableau-conteneur">
+              <table className="tableau">
+                <thead><tr><th>Date</th><th>Operation</th><th>Libelle</th><th className="num">Debit</th>
+                  <th className="num">Credit</th><th className="num">Solde</th></tr></thead>
+                <tbody>
+                  {releve.donnees.lignes.map((l: any, i: number) => (
+                    <tr key={i} className={l.nature === 'IMPAYE' ? 'limitant' : undefined}>
+                      <td>{fmtDate(l.date)}</td>
+                      <td><Badge valeur={NATURES[l.nature] ?? l.nature}
+                        classe={l.nature === 'FACTURE' ? 'info' : l.nature === 'IMPAYE' ? 'danger' : 'succes'} /></td>
+                      <td>{l.libelle}{l.date_echeance && <div className="secondaire">Echeance {fmtDate(l.date_echeance)}</div>}</td>
+                      <td className="num">{Number(l.debit) ? fmtMontant(l.debit) : ''}</td>
+                      <td className="num">{Number(l.credit) ? fmtMontant(l.credit) : ''}</td>
+                      <td className="num"><strong>{fmtMontant(l.solde)}</strong></td>
+                    </tr>
+                  ))}
+                  {!releve.donnees.lignes.length && <tr><td colSpan={6}><Vide texte="Aucune operation." /></td></tr>}
+                </tbody>
+                <tfoot>
+                  <tr><td colSpan={5}>Solde restant du</td><td className="num">{fmtMontant(releve.donnees.totaux.solde_restant_du)}</td></tr>
+                </tfoot>
+              </table>
+            </div>
+          </>
+        )
+      )}
+
+      {onglet === 'ouvertes' && releve.donnees && (
+        <div className="tableau-conteneur">
+          <table className="tableau">
+            <thead><tr><th>Facture</th><th>Date</th><th>Echeance</th><th className="num">TTC</th><th className="num">Regle</th>
+              <th className="num">Reste du</th><th className="num">Retard</th></tr></thead>
+            <tbody>
+              {releve.donnees.factures_ouvertes.map((f: any) => (
+                <tr key={f.id}>
+                  <td><strong>{f.numero_piece}</strong></td>
+                  <td>{fmtDate(f.date_doc)}</td>
+                  <td>{fmtDate(f.date_echeance)}</td>
+                  <td className="num">{fmtMontant(f.total_ttc)}</td>
+                  <td className="num">{fmtMontant(f.montant_paye)}</td>
+                  <td className="num"><strong>{fmtMontant(f.solde_du)}</strong></td>
+                  <td className="num">{f.jours_retard > 0 ? `${f.jours_retard} j` : '—'}</td>
+                </tr>
+              ))}
+              {!releve.donnees.factures_ouvertes.length && <tr><td colSpan={7}><Vide texte="Aucune facture restant due." /></td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {onglet === 'documents' && (<>
       <div className="tableau-conteneur">
         <table className="tableau">
           <thead><tr><th>Piece</th><th>Type</th><th>Date</th><th>Echeance</th><th className="num">Total TTC</th>
@@ -178,6 +252,7 @@ function ModaleDetailClient({ id, onFermer, onMaj }: { id: number; onFermer: () 
           </tbody>
         </table>
       </div>
+      </>)}
     </Modale>
   );
 }

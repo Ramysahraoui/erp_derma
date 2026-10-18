@@ -3,6 +3,7 @@ import { env } from './env.js';
 import { pool, closePool, transaction } from './db/pool.js';
 import { runMigrations } from './db/migrate.js';
 import { amorcer } from './db/amorcage.js';
+import { reconcilierAvoirs } from './modules/recouvrement/service.js';
 
 const app = await construireApp();
 
@@ -29,6 +30,10 @@ if (process.env.AMORCAGE_AUTO !== 'false') {
     ),
   );
 }
+
+// Imputation des encaissements restes en suspens (reprise des donnees V1).
+const imputations = await transaction((client) => reconcilierAvoirs(client));
+if (imputations) app.log.info(`${imputations} imputation(s) d'encaissement en suspens effectuee(s).`);
 
 await app.listen({ port: env.port, host: env.host });
 app.log.info(`ERP dermo-cosmetique demarre sur http://${env.host}:${env.port}`);

@@ -19,6 +19,7 @@ import { routesRecouvrement } from './modules/recouvrement/routes.js';
 import { routesFinance } from './modules/finance/routes.js';
 import { routesTracabilite } from './modules/tracabilite/routes.js';
 import { routesDocuments } from './modules/documents/routes.js';
+import { routesImports } from './modules/imports/routes.js';
 
 export async function construireApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -77,6 +78,7 @@ export async function construireApp(): Promise<FastifyInstance> {
   await app.register(routesFinance, { prefix: '/api' });
   await app.register(routesTracabilite, { prefix: '/api/tracabilite' });
   await app.register(routesDocuments, { prefix: '/api/documents' });
+  await app.register(routesImports, { prefix: '/api/imports' });
 
   return app;
 }

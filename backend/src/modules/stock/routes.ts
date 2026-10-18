@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { booleenRequete } from '../../core/requete.js';
 import { randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
@@ -9,7 +10,7 @@ import { tracer } from '../../core/audit.js';
 import { ErreurMetier, introuvable } from '../../core/erreurs.js';
 import { exige } from '../../core/auth.js';
 import { env } from '../../env.js';
-import { ajusterStock, allouerFefo, changerStatutLot, creerReception } from './service.js';
+import { ajusterStock, allouerFefo, changerStatutLot, creerReception, reintroduireLot } from './service.js';
 
 const schemaLigneReception = z.object({
   article_id: z.coerce.number().int(),
@@ -94,7 +95,7 @@ export async function routesStock(app: FastifyInstance): Promise<void> {
         statut: z.enum(['QUARANTAINE', 'CONFORME', 'REJETE', 'BLOQUE']).optional(),
         type: z.enum(['MP', 'AC', 'PF']).optional(),
         recherche: z.string().optional(),
-        disponible: z.coerce.boolean().optional(),
+        disponible: booleenRequete().optional(),
         peremption_avant: z.string().date().optional(),
       })
       .parse(req.query);
@@ -143,7 +144,14 @@ export async function routesStock(app: FastifyInstance): Promise<void> {
         WHERE m.lot_stock_id = $1 ORDER BY m.date_mouvement, m.id`,
       [id],
     );
-    return { ...lot, mouvements };
+    const historique_statuts = await query(
+      pool,
+      `SELECT h.*, u.nom_complet AS utilisateur
+         FROM lots_statuts_historique h LEFT JOIN utilisateurs u ON u.id = h.utilisateur_id
+        WHERE h.lot_stock_id = $1 ORDER BY h.cree_le, h.id`,
+      [id],
+    );
+    return { ...lot, mouvements, historique_statuts };
   });
 
   // Statut qualite : liberation / rejet / blocage (R&D-Qualite uniquement).
@@ -155,7 +163,19 @@ export async function routesStock(app: FastifyInstance): Promise<void> {
         motif: z.string().optional().nullable(),
       })
       .parse(req.body);
-    return changerStatutLot(pool, req.utilisateur.id, id, b.statut, b.motif);
+    return transaction((client) => changerStatutLot(client, req.utilisateur.id, id, b.statut, b.motif));
+  });
+
+  // Reintroduction d'un lot rejete, apres decision motivee (R&D / qualite).
+  app.post('/lots/:id/reintroduction', { preHandler: exige('stock:liberer') }, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params);
+    const b = z
+      .object({
+        statut_cible: z.enum(['QUARANTAINE', 'CONFORME']).default('QUARANTAINE'),
+        motif: z.string().trim().min(10, 'Motif de la decision obligatoire (10 caracteres minimum).'),
+      })
+      .parse(req.body);
+    return transaction((client) => reintroduireLot(client, req.utilisateur.id, id, b));
   });
 
   // Ajout ou remplacement du certificat d'analyse d'un lot deja receptionne.
@@ -174,8 +194,20 @@ export async function routesStock(app: FastifyInstance): Promise<void> {
 
   app.post('/lots/:id/ajustement', { preHandler: exige('stock:ajuster') }, async (req) => {
     const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params);
-    const b = z.object({ quantite: z.coerce.number().refine((v) => v !== 0, 'Quantite non nulle attendue.'), motif: z.string().min(5) }).parse(req.body);
-    return transaction((client) => ajusterStock(client, req.utilisateur.id, id, b.quantite, b.motif));
+    const b = z
+      .object({
+        sens: z.enum(['AUGMENTER', 'REDUIRE']).optional(),
+        quantite: z.coerce.number().refine((v) => v !== 0, 'Quantite non nulle attendue.'),
+        motif: z.string().trim().min(5, "Motif de l'ajustement obligatoire (5 caracteres minimum)."),
+      })
+      .superRefine((v, ctx) => {
+        if (v.sens && v.quantite < 0) {
+          ctx.addIssue({ code: 'custom', path: ['quantite'], message: 'Avec un sens explicite, la quantite est positive.' });
+        }
+      })
+      .parse(req.body);
+    const quantite = b.sens === 'REDUIRE' ? -b.quantite : b.quantite;
+    return transaction((client) => ajusterStock(client, req.utilisateur.id, id, quantite, b.motif));
   });
 
   // ------------------------------ FEFO -------------------------------

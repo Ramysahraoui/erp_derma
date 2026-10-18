@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { pool, query, queryOne, transaction } from '../../db/pool.js';
 import { introuvable } from '../../core/erreurs.js';
 import { exige } from '../../core/auth.js';
-import { balanceAgee, creerEncaissement, majStatutCheque } from './service.js';
+import { balanceAgee, creerEncaissement, majStatutCheque, releveClient } from './service.js';
 
 export async function routesRecouvrement(app: FastifyInstance): Promise<void> {
   app.get('/balance-agee', { preHandler: exige('recouvrement:lire') }, async (req) => {
@@ -27,10 +27,16 @@ export async function routesRecouvrement(app: FastifyInstance): Promise<void> {
     const clientsRisque = await query(
       pool,
       `SELECT * FROM v_encours_clients
-        WHERE plafond_credit > 0 AND (encours_facture + encours_livre_non_facture) > plafond_credit * 0.8
-        ORDER BY (encours_facture + encours_livre_non_facture) - plafond_credit DESC`,
+        WHERE plafond_credit > 0
+          AND (encours_facture + encours_livre_non_facture - avoir_disponible) > plafond_credit * 0.8
+        ORDER BY (encours_facture + encours_livre_non_facture - avoir_disponible) - plafond_credit DESC`,
     );
     return { balance, cheques_en_cours: cheques, encaissements_du_mois: encaissementsMois, clients_a_risque: clientsRisque };
+  });
+
+  app.get('/releve/:clientId', { preHandler: exige('recouvrement:lire') }, async (req) => {
+    const { clientId } = z.object({ clientId: z.coerce.number().int() }).parse(req.params);
+    return releveClient(pool, clientId);
   });
 
   app.get('/encaissements', { preHandler: exige('encaissement:lire') }, async (req) => {
@@ -44,8 +50,10 @@ export async function routesRecouvrement(app: FastifyInstance): Promise<void> {
     return query(
       pool,
       `SELECT e.*, c.raison_sociale,
+              (e.montant_verse - e.montant_affecte) AS reste_non_impute,
               (SELECT json_agg(json_build_object('document_id', ea.document_id, 'numero_piece', v.numero_piece,
-                                                 'montant_affecte', ea.montant_affecte))
+                                                 'montant_affecte', ea.montant_affecte, 'origine', ea.origine,
+                                                 'annulee', ea.annulee) ORDER BY ea.id)
                  FROM encaissement_affectations ea JOIN ventes_documents v ON v.id = ea.document_id
                 WHERE ea.encaissement_id = e.id) AS affectations
          FROM encaissements e JOIN clients c ON c.id = e.client_id
@@ -100,7 +108,7 @@ export async function routesRecouvrement(app: FastifyInstance): Promise<void> {
       pool,
       `SELECT ea.*, v.numero_piece, v.total_ttc, v.montant_paye, v.statut_paiement
          FROM encaissement_affectations ea JOIN ventes_documents v ON v.id = ea.document_id
-        WHERE ea.encaissement_id = $1`,
+        WHERE ea.encaissement_id = $1 ORDER BY ea.id`,
       [id],
     );
     return { ...enc, affectations };

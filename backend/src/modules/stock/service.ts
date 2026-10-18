@@ -61,9 +61,9 @@ export async function creerReception(
 
   const lotsCrees = [];
   for (const l of lignes) {
-    const article = await queryOne<{ id: number; type: 'MP' | 'AC' | 'PF'; code_sku: string }>(
+    const article = await queryOne<{ id: number; type: 'MP' | 'AC' | 'PF'; code_sku: string; actif: boolean }>(
       client,
-      'SELECT id, type, code_sku FROM articles_catalogue WHERE id = $1 AND actif',
+      'SELECT id, type, code_sku, actif FROM articles_catalogue WHERE id = $1',
       [l.article_id],
     );
     if (!article) throw introuvable('Article', l.article_id);
@@ -74,17 +74,12 @@ export async function creerReception(
         422,
       );
     }
-    // Certificat d'analyse obligatoire : a defaut, le motif est exige et le lot
-    // reste en quarantaine jusqu'a reception du document.
-    if (!l.coa_fichier && !l.coa_absent_motif?.trim()) {
-      throw new ErreurMetier(
-        'COA_MANQUANT',
-        `Certificat d'analyse obligatoire pour ${article.code_sku}. ` +
-          "Joindre le document (PDF ou image) ou motiver son absence (le lot restera en quarantaine).",
-        422,
-      );
+    // Certificat de conformite facultatif (CDCF V2 2.2) : il peut etre joint
+    // ulterieurement depuis la fiche du lot.
+    if (article.actif === false) {
+      throw new ErreurMetier('ARTICLE_INDISPONIBLE', `L'article ${article.code_sku} est indisponible : reception impossible.`, 422);
     }
-    const statutEntree = l.coa_fichier ? (l.statut ?? 'QUARANTAINE') : 'QUARANTAINE';
+    const statutEntree = l.statut ?? 'QUARANTAINE';
     const codeLot = await genererNumero(client, prefixeLotParType(article.type));
     const lot = await queryOne(
       client,
@@ -106,47 +101,100 @@ export async function creerReception(
        reception!.id, `Reception ${numero}`, utilisateurId],
     );
     await majPamp(client, article.id, q3(l.quantite), p4(d(l.prix_achat_unitaire).plus(l.frais_approche_unitaire ?? 0)));
+    await journaliserStatut(client, utilisateurId, lot!.id, null, statutEntree, 'RECEPTION',
+      l.coa_fichier ? null : 'Reception sans certificat de conformite');
     await tracer(client, utilisateurId, 'RECEPTION_LOT', 'lots_stock', lot!.id, {
       code_lot_interne: codeLot, article: article.code_sku, quantite: q3(l.quantite),
     });
-    lotsCrees.push({ ...lot, code_sku: article.code_sku });
+    // Relecture : la quantite du lot est portee par le mouvement d'entree.
+    const lotAJour = await queryOne(client, 'SELECT * FROM lots_stock WHERE id = $1', [lot!.id]);
+    lotsCrees.push({ ...lotAJour, code_sku: article.code_sku });
   }
   return { reception, lots: lotsCrees };
 }
 
-/** Changement de statut qualite d'un lot (liberation, rejet, blocage). */
-export async function changerStatutLot(
+/** Ligne d'historique des statuts qualite d'un lot (table immuable). */
+async function journaliserStatut(
   db: Db,
+  utilisateurId: number,
+  lotId: number,
+  ancien: string | null,
+  nouveau: string,
+  nature: 'RECEPTION' | 'CHANGEMENT_STATUT' | 'REINTRODUCTION',
+  motif: string | null,
+) {
+  await db.query(
+    `INSERT INTO lots_statuts_historique (lot_stock_id, ancien_statut, nouveau_statut, nature, motif, utilisateur_id)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [lotId, ancien, nouveau, nature, motif, utilisateurId],
+  );
+}
+
+/**
+ * Changement de statut qualite d'un lot (liberation, rejet, blocage).
+ * La sortie du statut « rejete » ne passe pas par cette voie : elle exige une
+ * decision de reintroduction explicite et motivee (`reintroduireLot`).
+ */
+export async function changerStatutLot(
+  client: pg.PoolClient,
   utilisateurId: number,
   lotId: number,
   statut: 'QUARANTAINE' | 'CONFORME' | 'REJETE' | 'BLOQUE',
   motif?: string | null,
 ) {
-  const lot = await queryOne(db, 'SELECT * FROM lots_stock WHERE id = $1', [lotId]);
+  const lot = await queryOne(client, 'SELECT * FROM lots_stock WHERE id = $1 FOR UPDATE', [lotId]);
   if (!lot) throw introuvable('Lot', lotId);
   if (lot.statut === statut) return lot;
   if (lot.statut === 'REJETE') {
-    throw new ErreurMetier('LOT_REJETE', 'Un lot rejete ne peut pas etre remis en circulation.', 422);
-  }
-  if (statut === 'CONFORME' && !lot.coa_fichier) {
-    const article = await queryOne(db, 'SELECT type, code_sku FROM articles_catalogue WHERE id = $1', [lot.article_id]);
-    if (article && ['MP', 'AC'].includes(article.type)) {
-      throw new ErreurMetier(
-        'COA_MANQUANT',
-        `Liberation impossible : aucun certificat d'analyse n'est joint au lot ${lot.code_lot_interne} (${article.code_sku}).`,
-        422,
-      );
-    }
+    throw new ErreurMetier(
+      'LOT_REJETE',
+      'Un lot rejete ne peut etre remis en circulation que par une reintroduction motivee.',
+      422,
+    );
   }
   const maj = await queryOne(
-    db,
+    client,
     `UPDATE lots_stock SET statut = $2, statut_modifie_par = $3, statut_modifie_le = NOW(),
        commentaire = COALESCE($4, commentaire)
      WHERE id = $1 RETURNING *`,
     [lotId, statut, utilisateurId, motif ?? null],
   );
-  await tracer(db, utilisateurId, 'CHANGEMENT_STATUT_LOT', 'lots_stock', lotId, {
+  await journaliserStatut(client, utilisateurId, lotId, lot.statut, statut, 'CHANGEMENT_STATUT', motif ?? null);
+  await tracer(client, utilisateurId, 'CHANGEMENT_STATUT_LOT', 'lots_stock', lotId, {
     ancien_statut: lot.statut, nouveau_statut: statut, motif: motif ?? null,
+  });
+  return maj;
+}
+
+/**
+ * Reintroduction d'un lot rejete apres decision (CDCF V2 2.3). Le rejet
+ * initial reste visible dans l'historique des statuts ; la decision est
+ * nominative, horodatee et motivee.
+ */
+export async function reintroduireLot(
+  client: pg.PoolClient,
+  utilisateurId: number,
+  lotId: number,
+  params: { statut_cible: 'QUARANTAINE' | 'CONFORME'; motif: string },
+) {
+  const motif = params.motif?.trim() ?? '';
+  if (motif.length < 10) {
+    throw new ErreurMetier('MOTIF_OBLIGATOIRE', 'La reintroduction exige un motif circonstancie (10 caracteres minimum).', 422);
+  }
+  const lot = await queryOne(client, 'SELECT * FROM lots_stock WHERE id = $1 FOR UPDATE', [lotId]);
+  if (!lot) throw introuvable('Lot', lotId);
+  if (lot.statut !== 'REJETE') {
+    throw new ErreurMetier('LOT_NON_REJETE', `Seul un lot rejete peut etre reintroduit (statut actuel : ${lot.statut}).`, 422);
+  }
+  const maj = await queryOne(
+    client,
+    `UPDATE lots_stock SET statut = $2, statut_modifie_par = $3, statut_modifie_le = NOW()
+      WHERE id = $1 RETURNING *`,
+    [lotId, params.statut_cible, utilisateurId],
+  );
+  await journaliserStatut(client, utilisateurId, lotId, 'REJETE', params.statut_cible, 'REINTRODUCTION', motif);
+  await tracer(client, utilisateurId, 'REINTRODUCTION_LOT', 'lots_stock', lotId, {
+    ancien_statut: 'REJETE', nouveau_statut: params.statut_cible, motif,
   });
   return maj;
 }

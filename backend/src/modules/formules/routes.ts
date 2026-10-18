@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { booleenRequete } from '../../core/requete.js';
 import { pool, query, queryOne, transaction } from '../../db/pool.js';
 import { ErreurMetier, introuvable } from '../../core/erreurs.js';
 import { exige } from '../../core/auth.js';
@@ -37,7 +38,7 @@ export async function routesFormules(app: FastifyInstance): Promise<void> {
       .object({
         recherche: z.string().optional(),
         statut: z.enum(['BROUILLON', 'VALIDEE', 'ARCHIVEE']).optional(),
-        derniere_version: z.coerce.boolean().optional(),
+        derniere_version: booleenRequete().optional(),
       })
       .parse(req.query);
     return query(

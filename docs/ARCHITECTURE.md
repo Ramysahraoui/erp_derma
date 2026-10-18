@@ -14,10 +14,10 @@
 3. **Aucune suppression sur la tracabilite.** Les corrections s'operent par
    ajustement motive ou contre-passation, conformement a l'exigence d'audit trail
    (BPF / ISO 22716).
-4. **Le certificat d'analyse conditionne la liberation.** Une reception sans CoA
-   exige un motif ecrit et force la quarantaine ; le passage au statut conforme
-   d'un lot de MP ou d'AC est refuse tant que le document n'est pas joint
-   (trigger `fn_liberation_exige_coa`).
+4. **Chaque changement de statut d'un lot est historise.** Le certificat de
+   conformite est facultatif (V2, le trigger `fn_liberation_exige_coa` est
+   retire par `003_v2.sql`) ; liberations, rejets et reintroductions sont
+   enregistres dans `lots_statuts_historique`, non supprimable.
 5. **Precision explicite.** Masses et quantites en `NUMERIC(16,3)`, prix unitaires
    en `NUMERIC(16,4)`, montants de documents en `NUMERIC(18,2)`. Cote applicatif,
    `decimal.js` remplace l'arithmetique flottante ; les arrondis sont toujours
@@ -32,8 +32,10 @@
 - `fournisseurs`, `receptions` — origine des entrees.
 - `lots_stock` — lot interne unique (`LOT-MP-AAAA-XXXXX`), lot fournisseur, DLUO,
   statut qualite, cout unitaire genere (`prix_achat + frais_approche`), certificat
-  d'analyse (`coa_fichier`, ou `coa_absent_motif` si le document est annonce mais
-  non encore fourni : le lot reste alors bloque en quarantaine).
+  de conformite facultatif (`coa_fichier`, joignable apres coup).
+- `lots_statuts_historique` — ancien et nouveau statut, nature (changement ou
+  reintroduction), motif, utilisateur.
+- `articles_modifications` — trace champ par champ des modifications d'articles.
 - `mouvements_stock` — journal immuable (entree reception, sortie production,
   entree production, sortie vente, rebut, ajustement, annulation).
 
@@ -60,7 +62,10 @@
 - `clients` (plafond d'encours, delai de reglement), `ventes_documents`
   (DEVIS / BC / BL / FACTURE chaines par `document_parent_id`), `ventes_lignes`
   (lot de PF obligatoire sur BL), `encaissements` et
-  `encaissement_affectations` (un reglement, plusieurs factures).
+  `encaissement_affectations` (un reglement, plusieurs factures) ; imputations manuelles
+  ou automatiques (FIFO), jamais supprimees : celles d'un cheque impaye sont
+  marquees `annulee`. La part non imputee d'un encaissement constitue l'avoir du
+  client (`v_encours_clients.avoir_disponible`).
 - `depenses` / `depenses_categories` (charges directes et indirectes),
   `salaries` / `pointages` (heures imputables a un OF).
 - Vues d'analyse : `v_stock_disponible`, `v_balance_agee`, `v_encours_clients`.

@@ -2,29 +2,32 @@ import { useState } from 'react';
 import { api, aujourdhui, fmtDate, fmtMontant, fmtNombre } from '../api';
 import { useAuth } from '../auth';
 import { Alerte, AlerteErreur, Badge, Champ, Chargement, Modale, useChargement, Vide } from '../composants/Ui';
+import { ImportExcel } from '../composants/ImportExcel';
 
 interface LigneSaisie {
   article_id: string; quantite: string; code_lot_fournisseur: string; dluo: string;
   prix_achat_unitaire: string; frais_approche_unitaire: string; statut: 'QUARANTAINE' | 'CONFORME';
-  coa_fichier: string | null; coa_nom: string | null; coa_absent_motif: string; emplacement: string;
+  coa_fichier: string | null; coa_nom: string | null; emplacement: string;
 }
 
 const ligneVide = (): LigneSaisie => ({
   article_id: '', quantite: '', code_lot_fournisseur: '', dluo: '', prix_achat_unitaire: '',
   frais_approche_unitaire: '0', statut: 'QUARANTAINE', coa_fichier: null, coa_nom: null,
-  coa_absent_motif: '', emplacement: '',
+  emplacement: '',
 });
 
 export function Receptions() {
   const { peut } = useAuth();
   const [saisie, setSaisie] = useState(false);
   const [detail, setDetail] = useState<number | null>(null);
+  const [importation, setImportation] = useState(false);
   const liste = useChargement(() => api.get('/receptions'));
 
   return (
     <>
       <div className="barre-filtres">
         <div style={{ flex: 1 }} />
+        {peut('stock:receptionner') && <button className="bouton" onClick={() => setImportation(true)}>Importer depuis Excel</button>}
         {peut('stock:receptionner') && <button className="bouton primaire" onClick={() => setSaisie(true)}>Saisir une reception</button>}
       </div>
       <section className="carte">
@@ -51,6 +54,7 @@ export function Receptions() {
       </section>
       {saisie && <ModaleReception onFermer={() => setSaisie(false)} onCree={() => { setSaisie(false); liste.recharger(); }} />}
       {detail && <ModaleDetailReception id={detail} onFermer={() => setDetail(null)} />}
+      {importation && <ImportReception onFermer={() => setImportation(false)} onTermine={liste.recharger} />}
     </>
   );
 }
@@ -91,9 +95,8 @@ function ModaleReception({ onFermer, onCree }: { onFermer: () => void; onCree: (
           dluo: l.dluo || null,
           prix_achat_unitaire: Number(l.prix_achat_unitaire || 0),
           frais_approche_unitaire: Number(l.frais_approche_unitaire || 0),
-          statut: l.coa_fichier ? l.statut : 'QUARANTAINE',
+          statut: l.statut,
           coa_fichier: l.coa_fichier,
-          coa_absent_motif: l.coa_fichier ? null : l.coa_absent_motif,
           emplacement: l.emplacement || null,
         })),
       });
@@ -101,7 +104,7 @@ function ModaleReception({ onFermer, onCree }: { onFermer: () => void; onCree: (
     } catch (e) { setErreur(e); } finally { setEnCours(false); }
   };
 
-  const articlesReceptionnables = (articles.donnees ?? []).filter((a: any) => a.type !== 'PF');
+  const articlesReceptionnables = (articles.donnees ?? []).filter((a: any) => a.type !== 'PF' && a.actif);
 
   return (
     <Modale large titre="Reception fournisseur" onFermer={onFermer}
@@ -110,9 +113,9 @@ function ModaleReception({ onFermer, onCree }: { onFermer: () => void; onCree: (
           {enCours ? 'Enregistrement…' : 'Enregistrer la reception'}</button></>}>
       <AlerteErreur erreur={erreur} />
       <Alerte type="info">
-        Chaque ligne genere un numero de lot interne unique. Le certificat d'analyse est obligatoire :
-        a defaut, son absence doit etre motivee et le lot reste bloque en quarantaine jusqu'a reception
-        du document. Seul le responsable qualite peut ensuite liberer le lot.
+        Chaque ligne genere un numero de lot interne unique. Le certificat de conformite est facultatif :
+        il peut etre joint plus tard depuis la fiche du lot. Un lot en quarantaine est libere par le
+        responsable qualite.
       </Alerte>
       <div className="ligne-champs">
         <Champ libelle="Fournisseur">
@@ -163,24 +166,15 @@ function ModaleReception({ onFermer, onCree }: { onFermer: () => void; onCree: (
                 <input value={l.emplacement} onChange={(e) => majLigne(i, 'emplacement', e.target.value)} placeholder="Magasin A / Rayon 3" />
               </Champ>
               <Champ libelle="Statut a l'entree">
-                <select value={l.coa_fichier ? l.statut : 'QUARANTAINE'} disabled={!l.coa_fichier}
-                  onChange={(e) => majLigne(i, 'statut', e.target.value)}>
+                <select value={l.statut} onChange={(e) => majLigne(i, 'statut', e.target.value)}>
                   <option value="QUARANTAINE">Quarantaine (controle a venir)</option>
-                  <option value="CONFORME">Conforme (CoA valide)</option>
+                  <option value="CONFORME">Conforme</option>
                 </select>
-                {!l.coa_fichier && <span className="aide">Liberation impossible sans certificat d'analyse.</span>}
               </Champ>
-              <Champ libelle="Certificat d'analyse (PDF / image)" obligatoire>
+              <Champ libelle="Certificat de conformite (facultatif)" aide="PDF ou image ; peut etre joint plus tard">
                 <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={(e) => televerser(i, e.target.files?.[0])} />
                 {l.coa_nom && <span className="aide">Joint : {l.coa_nom}</span>}
               </Champ>
-              {!l.coa_fichier && (
-                <Champ libelle="Motif d'absence du certificat" obligatoire
-                  aide="Le lot restera en quarantaine jusqu'a reception du document">
-                  <input value={l.coa_absent_motif} onChange={(e) => majLigne(i, 'coa_absent_motif', e.target.value)}
-                    placeholder="CoA annonce par le fournisseur sous 48 h" />
-                </Champ>
-              )}
             </div>
             {lignes.length > 1 && (
               <div className="actions" style={{ marginTop: 10 }}>
@@ -228,5 +222,45 @@ function ModaleDetailReception({ id, onFermer }: { id: number; onFermer: () => v
         </table>
       </div>
     </Modale>
+  );
+}
+
+/** Reception par fichier Excel : en-tete saisi ici, une ligne par lot dans le classeur. */
+function ImportReception({ onFermer, onTermine }: { onFermer: () => void; onTermine: () => void }) {
+  const fournisseurs = useChargement(() => api.get('/fournisseurs'));
+  const [entete, setEntete] = useState({ fournisseur_id: '', date_reception: aujourdhui(), reference_bl_fournisseur: '' });
+  return (
+    <ImportExcel
+      titre="Reception par fichier Excel"
+      base="/imports/receptions"
+      nomModele="modele-import-reception.xlsx"
+      champs={entete}
+      colonnes={[
+        { cle: 'code_sku', libelle: 'Article' }, { cle: 'quantite', libelle: 'Quantite' },
+        { cle: 'lot_fournisseur', libelle: 'Lot fournisseur' }, { cle: 'dluo', libelle: 'DLUO' },
+        { cle: 'prix_achat_unitaire', libelle: 'Prix achat' }, { cle: 'statut', libelle: 'Statut' },
+      ]}
+      explication={<>Une ligne par lot recu. Les lignes valides forment une seule reception, avec un numero de lot
+        interne par ligne. Le certificat de conformite n'est pas demande : il se joint ensuite depuis la fiche
+        de chaque lot.</>}
+      champsSaisie={
+        <div className="ligne-champs" style={{ marginBottom: 12 }}>
+          <Champ libelle="Fournisseur">
+            <select value={entete.fournisseur_id} onChange={(e) => setEntete({ ...entete, fournisseur_id: e.target.value })}>
+              <option value="">—</option>
+              {(fournisseurs.donnees ?? []).map((f: any) => <option key={f.id} value={f.id}>{f.raison_sociale}</option>)}
+            </select>
+          </Champ>
+          <Champ libelle="Date de reception">
+            <input type="date" value={entete.date_reception} onChange={(e) => setEntete({ ...entete, date_reception: e.target.value })} />
+          </Champ>
+          <Champ libelle="BL fournisseur">
+            <input value={entete.reference_bl_fournisseur} onChange={(e) => setEntete({ ...entete, reference_bl_fournisseur: e.target.value })} />
+          </Champ>
+        </div>
+      }
+      onFermer={onFermer}
+      onTermine={onTermine}
+    />
   );
 }

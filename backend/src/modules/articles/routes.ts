@@ -1,35 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { pool, query, queryOne } from '../../db/pool.js';
+import { booleenRequete } from '../../core/requete.js';
+import { pool, query, queryOne, transaction } from '../../db/pool.js';
 import { ErreurMetier, introuvable } from '../../core/erreurs.js';
 import { exige } from '../../core/auth.js';
 import { tracer } from '../../core/audit.js';
 
-const UNITES_MP = ['g', 'kg', 'L', 'ml'] as const;
-
-const schemaArticle = z
-  .object({
-    code_sku: z.string().min(2).max(40).regex(/^[A-Z0-9._-]+$/i, 'Code SKU alphanumerique attendu.'),
-    designation: z.string().min(2),
-    type: z.enum(['MP', 'AC', 'PF']),
-    unite: z.string().min(1),
-    nom_inci: z.string().optional().nullable(),
-    seuil_critique: z.coerce.number().min(0).default(0),
-    prix_vente_ht: z.coerce.number().min(0).default(0),
-    tva_pct: z.coerce.number().min(0).max(100).default(19),
-    contenance_ml: z.coerce.number().positive().optional().nullable(),
-  })
-  .superRefine((v, ctx) => {
-    if (v.type === 'MP' && !UNITES_MP.includes(v.unite as (typeof UNITES_MP)[number])) {
-      ctx.addIssue({ code: 'custom', path: ['unite'], message: "Une matiere premiere s'exprime en g, kg, L ou ml." });
-    }
-    if (v.type !== 'MP' && v.unite !== 'U') {
-      ctx.addIssue({ code: 'custom', path: ['unite'], message: "Un AC ou un PF s'exprime en unites (U)." });
-    }
-    if (v.type !== 'PF' && v.contenance_ml) {
-      ctx.addIssue({ code: 'custom', path: ['contenance_ml'], message: 'La contenance ne concerne que les produits finis.' });
-    }
-  });
+import { schemaArticle } from './schema.js';
+import { creerArticle } from './service.js';
 
 export async function routesArticles(app: FastifyInstance): Promise<void> {
   // ---------------------------- Articles ----------------------------
@@ -38,8 +16,8 @@ export async function routesArticles(app: FastifyInstance): Promise<void> {
       .object({
         type: z.enum(['MP', 'AC', 'PF']).optional(),
         recherche: z.string().optional(),
-        actif: z.coerce.boolean().optional(),
-        avec_stock: z.coerce.boolean().optional(),
+        actif: booleenRequete().optional(),
+        avec_stock: booleenRequete().optional(),
       })
       .parse(req.query);
     return query(
@@ -83,52 +61,112 @@ export async function routesArticles(app: FastifyInstance): Promise<void> {
           [id],
         )
       : [];
-    return { ...article, lots, nomenclature };
+    const modifications = await query(
+      pool,
+      `SELECT m.*, u.nom_complet AS utilisateur FROM articles_modifications m
+         LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id
+        WHERE m.article_id = $1 ORDER BY m.cree_le DESC, m.id DESC LIMIT 200`,
+      [id],
+    );
+    const activite = await queryOne(
+      pool,
+      `SELECT (SELECT COUNT(*) FROM lots_stock WHERE article_id = $1)::int AS lots,
+              (SELECT COUNT(*) FROM mouvements_stock m JOIN lots_stock l ON l.id = m.lot_stock_id
+                WHERE l.article_id = $1)::int AS mouvements,
+              (SELECT COUNT(DISTINCT document_id) FROM ventes_lignes WHERE article_id = $1)::int AS documents_vente,
+              (SELECT COUNT(DISTINCT formule_id) FROM formule_lignes WHERE article_id = $1)::int AS formules`,
+      [id],
+    );
+    return { ...article, lots, nomenclature, modifications, activite };
   });
 
   app.post('/articles', { preHandler: exige('article:ecrire') }, async (req, rep) => {
     const b = schemaArticle.parse(req.body);
-    const a = await queryOne(
-      pool,
-      `INSERT INTO articles_catalogue (code_sku, designation, type, unite, nom_inci, seuil_critique, prix_vente_ht, tva_pct, contenance_ml)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [b.code_sku.toUpperCase(), b.designation, b.type, b.unite, b.nom_inci ?? null, b.seuil_critique,
-       b.prix_vente_ht, b.tva_pct, b.contenance_ml ?? null],
-    );
-    await tracer(pool, req.utilisateur.id, 'CREATION_ARTICLE', 'articles_catalogue', a!.id, { code_sku: a!.code_sku });
+    const a = await creerArticle(pool, req.utilisateur.id, b);
     return rep.status(201).send(a);
   });
 
+  /**
+   * Modification d'un article (CDCF V2 2.1) : code, disponibilite, prix de
+   * vente et attributs descriptifs. Chaque champ reellement modifie est
+   * historise (ancienne et nouvelle valeur, utilisateur, date). Le code peut
+   * changer sans rien rompre : mouvements, lots, formules et documents sont
+   * rattaches a l'identifiant interne de l'article, jamais a son code.
+   */
   app.patch('/articles/:id', { preHandler: exige('article:ecrire') }, async (req) => {
     const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params);
     const b = z
       .object({
+        code_sku: z.string().trim().min(2).max(40).regex(/^[A-Z0-9._-]+$/i, 'Code SKU alphanumerique attendu.').optional(),
         designation: z.string().min(2).optional(),
         nom_inci: z.string().nullable().optional(),
         seuil_critique: z.coerce.number().min(0).optional(),
         prix_vente_ht: z.coerce.number().min(0).optional(),
         tva_pct: z.coerce.number().min(0).max(100).optional(),
         contenance_ml: z.coerce.number().positive().nullable().optional(),
+        densite: z.coerce.number().positive().max(5).nullable().optional(),
         actif: z.boolean().optional(),
       })
       .parse(req.body);
-    const a = await queryOne(
+
+    return transaction(async (client) => {
+      const avant = await queryOne(client, 'SELECT * FROM articles_catalogue WHERE id = $1 FOR UPDATE', [id]);
+      if (!avant) throw introuvable('Article', id);
+
+      const demandes: Record<string, unknown> = { ...b };
+      if (b.code_sku !== undefined) demandes.code_sku = b.code_sku.toUpperCase();
+      if (demandes.code_sku && demandes.code_sku !== avant.code_sku) {
+        const doublon = await queryOne(
+          client, 'SELECT id FROM articles_catalogue WHERE UPPER(code_sku) = $1 AND id <> $2', [demandes.code_sku, id],
+        );
+        if (doublon) {
+          throw new ErreurMetier('CODE_DEJA_UTILISE', `Le code ${demandes.code_sku} est deja attribue a un autre article.`, 409);
+        }
+      }
+      if (b.contenance_ml && avant.type !== 'PF') {
+        throw new ErreurMetier('CHAMP_INAPPLICABLE', 'La contenance ne concerne que les produits finis.', 422);
+      }
+
+      // Seuls les champs dont la valeur change sont ecrits et historises.
+      const normaliser = (v: unknown) => (v === null || v === undefined ? null : String(v));
+      const egal = (champ: string, nouvelle: unknown) => {
+        const ancienne = avant[champ];
+        // Les colonnes NUMERIC reviennent en chaine : comparaison numerique.
+        if (typeof nouvelle === 'number') return ancienne !== null && Number(ancienne) === nouvelle;
+        return normaliser(ancienne) === normaliser(nouvelle);
+      };
+      const changements = Object.entries(demandes).filter(([champ, valeur]) => valeur !== undefined && !egal(champ, valeur));
+      if (changements.length === 0) return { ...avant, modifications_enregistrees: 0 };
+
+      const colonnes = changements.map(([champ], i) => `${champ} = $${i + 2}`).join(', ');
+      const maj = await queryOne(
+        client,
+        `UPDATE articles_catalogue SET ${colonnes} WHERE id = $1 RETURNING *`,
+        [id, ...changements.map(([, valeur]) => valeur)],
+      );
+      for (const [champ, valeur] of changements) {
+        await client.query(
+          `INSERT INTO articles_modifications (article_id, champ, ancienne_valeur, nouvelle_valeur, utilisateur_id)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [id, champ, normaliser(avant[champ]), normaliser(valeur), req.utilisateur.id],
+        );
+      }
+      await tracer(client, req.utilisateur.id, 'MAJ_ARTICLE', 'articles_catalogue', id, {
+        changements: Object.fromEntries(changements.map(([c, v]) => [c, { ancien: normaliser(avant[c]), nouveau: normaliser(v) }])),
+      });
+      return { ...maj, modifications_enregistrees: changements.length };
+    });
+  });
+
+  app.get('/articles/:id/modifications', { preHandler: exige('article:lire') }, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params);
+    return query(
       pool,
-      `UPDATE articles_catalogue SET
-         designation    = COALESCE($2, designation),
-         nom_inci       = COALESCE($3, nom_inci),
-         seuil_critique = COALESCE($4, seuil_critique),
-         prix_vente_ht  = COALESCE($5, prix_vente_ht),
-         tva_pct        = COALESCE($6, tva_pct),
-         contenance_ml  = COALESCE($7, contenance_ml),
-         actif          = COALESCE($8, actif)
-       WHERE id = $1 RETURNING *`,
-      [id, b.designation ?? null, b.nom_inci ?? null, b.seuil_critique ?? null, b.prix_vente_ht ?? null,
-       b.tva_pct ?? null, b.contenance_ml ?? null, b.actif ?? null],
+      `SELECT m.*, u.nom_complet AS utilisateur
+         FROM articles_modifications m LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id
+        WHERE m.article_id = $1 ORDER BY m.cree_le DESC, m.id DESC`,
+      [id],
     );
-    if (!a) throw introuvable('Article', id);
-    await tracer(pool, req.utilisateur.id, 'MAJ_ARTICLE', 'articles_catalogue', id, b);
-    return a;
   });
 
   // ------------------------ Nomenclature AC -------------------------

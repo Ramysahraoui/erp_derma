@@ -99,7 +99,7 @@ function ModaleCreation({ onFermer, onCree }: { onFermer: () => void; onCree: (i
         <Champ libelle="Produit fini rattache">
           <select value={form.article_pf_id ?? ''} onChange={(e) => setForm({ ...form, article_pf_id: e.target.value })}>
             <option value="">—</option>
-            {(produits.donnees ?? []).map((p: any) => <option key={p.id} value={p.id}>{p.code_sku} — {p.designation}</option>)}
+            {(produits.donnees ?? []).filter((p: any) => p.actif).map((p: any) => <option key={p.id} value={p.id}>{p.code_sku} — {p.designation}</option>)}
           </select>
         </Champ>
         <Champ libelle="Perte de process (%)" aide="Fonds de cuve et tuyauterie">

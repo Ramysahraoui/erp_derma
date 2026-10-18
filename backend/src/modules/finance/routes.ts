@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { booleenRequete } from '../../core/requete.js';
 import { pool, query, queryOne } from '../../db/pool.js';
 import { introuvable } from '../../core/erreurs.js';
 import { exige } from '../../core/auth.js';
@@ -32,7 +33,7 @@ export async function routesFinance(app: FastifyInstance): Promise<void> {
         type: z.enum(['DIRECTE', 'INDIRECTE']).optional(),
         depuis: z.string().date().optional(),
         jusqua: z.string().date().optional(),
-        rapproche: z.coerce.boolean().optional(),
+        rapproche: booleenRequete().optional(),
       })
       .parse(req.query);
     return query(

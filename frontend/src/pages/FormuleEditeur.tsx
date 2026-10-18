@@ -162,7 +162,7 @@ export function FormuleEditeur() {
                             <td>
                               {modifiable ? (
                                 <select value={l.article_id} onChange={(e) => majLigne(i, 'article_id', e.target.value)}>
-                                  {(matieres.donnees ?? []).map((m: any) => (
+                                  {(matieres.donnees ?? []).filter((m: any) => m.actif || String(m.id) === l.article_id).map((m: any) => (
                                     <option key={m.id} value={m.id}>{m.code_sku} — {m.designation}</option>
                                   ))}
                                 </select>
@@ -210,7 +210,7 @@ export function FormuleEditeur() {
                 {PHASES.map((p) => (
                   <button key={p.cle} className="bouton petit"
                     onClick={() => setLignes([...lignes, {
-                      article_id: String(matieres.donnees?.[0]?.id ?? ''), phase: p.cle, pourcentage_w_w: '0.000', consigne: '',
+                      article_id: String((matieres.donnees ?? []).find((m: any) => m.actif)?.id ?? ''), phase: p.cle, pourcentage_w_w: '0.000', consigne: '',
                     }])}>
                     + Ingredient phase {p.cle}
                   </button>

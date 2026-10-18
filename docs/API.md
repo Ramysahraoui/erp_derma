@@ -22,8 +22,9 @@ restent accessibles.
 | Methode | Route | Permission | Objet |
 |---|---|---|---|
 | GET | `/articles` | `article:lire` | Filtres `type`, `recherche`, `actif`, `avec_stock` |
-| GET | `/articles/:id` | `article:lire` | Article, lots en stock, nomenclature |
-| POST / PATCH | `/articles` `/articles/:id` | `article:ecrire` | Creation / mise a jour |
+| GET | `/articles/:id` | `article:lire` | Article, lots en stock, nomenclature, historique des modifications, activite rattachee |
+| POST / PATCH | `/articles` `/articles/:id` | `article:ecrire` | Creation / mise a jour. Le `PATCH` accepte `code_sku` (code deja attribue : **409 `CODE_DEJA_UTILISE`**), `actif`, `prix_vente_ht`... ; chaque champ modifie est trace |
+| GET | `/articles/:id/modifications` | `article:lire` | Historique : champ, ancienne et nouvelle valeur, utilisateur, date |
 | PUT | `/articles/:id/nomenclature` | `article:ecrire` | Nomenclature de conditionnement d'un PF |
 | GET / POST | `/fournisseurs` | `article:lire` / `achat:ecrire` | Fournisseurs |
 
@@ -31,17 +32,32 @@ restent accessibles.
 | Methode | Route | Permission | Objet |
 |---|---|---|---|
 | POST | `/fichiers` | `stock:receptionner` | Televersement d'un CoA (PDF/image, 12 Mo) |
-| POST | `/receptions` | `stock:receptionner` | Reception multi-lignes, genere les lots internes. `coa_fichier` **obligatoire**, sinon `coa_absent_motif` (le lot est force en quarantaine) |
+| POST | `/receptions` | `stock:receptionner` | Reception multi-lignes, genere les lots internes. `coa_fichier` **facultatif** ; le statut demande est respecte. Article inactif : **422 `ARTICLE_INDISPONIBLE`** |
 | GET | `/receptions` `/receptions/:id` | `stock:lire` | Historique et detail |
 | GET | `/lots` | `stock:lire` | Filtres `article_id`, `statut`, `type`, `recherche`, `disponible`, `peremption_avant` |
-| GET | `/lots/:id` | `stock:lire` | Lot et historique complet des mouvements |
-| POST | `/lots/:id/statut` | `stock:liberer` | Liberation, blocage, rejet (motif trace). Refus **422 `COA_MANQUANT`** sans certificat |
-| POST | `/lots/:id/coa` | `stock:receptionner` | Depot differe du certificat d'analyse |
-| POST | `/lots/:id/ajustement` | `stock:ajuster` | Correction signee, motif obligatoire |
+| GET | `/lots/:id` | `stock:lire` | Lot, historique complet des mouvements et `historique_statuts` |
+| POST | `/lots/:id/statut` | `stock:liberer` | Liberation, blocage, rejet (motif trace, certificat non exige). Sortie d'un lot `REJETE` refusee (**422 `LOT_REJETE`**) |
+| POST | `/lots/:id/reintroduction` | `stock:liberer` | Reintroduction d'un lot rejete : `statut_cible` (`QUARANTAINE` ou `CONFORME`), `motif` (10 caracteres min.) ; le rejet reste dans l'historique |
+| POST | `/lots/:id/coa` | `stock:receptionner` | Depot differe du certificat de conformite |
+| POST | `/lots/:id/ajustement` | `stock:ajuster` | `sens` (`AUGMENTER` / `REDUIRE`), `quantite` positive, `motif` obligatoire ; reduction au-dela du stock refusee |
 | GET | `/stock/fefo` | `stock:lire` | Proposition d'allocation FEFO (`article_id`, `quantite`) |
 | GET | `/stock/etat` | `stock:lire` | Etat des stocks par article |
 | GET | `/stock/alertes` | `stock:lire` | Sous-seuil, peremptions a 90 jours, quarantaine |
 | GET | `/stock/mouvements` | `stock:lire` | Journal des mouvements |
+
+## Imports Excel
+Le fichier est envoye en `multipart/form-data` (classeur `.xlsx`, 12 Mo max.).
+L'import re-controle le fichier cote serveur : seules les lignes valides sont
+enregistrees, chacune isolee (une ligne en erreur n'annule pas les autres).
+
+| Methode | Route | Permission | Objet |
+|---|---|---|---|
+| GET | `/imports/articles/modele` | `article:ecrire` | Modele xlsx (colonnes, aide, listes de choix, consignes) |
+| POST | `/imports/articles/apercu` | `article:ecrire` | Controle sans ecriture : `{ lignes: [{ numero, donnees, erreurs }], valides, rejetees }` |
+| POST | `/imports/articles` | `article:ecrire` | Import ; compte rendu `{ importees, rejetees: [{ ligne, code, motifs }] }` |
+| GET | `/imports/receptions/modele` | `stock:receptionner` | Modele xlsx d'une reception |
+| POST | `/imports/receptions/apercu` | `stock:receptionner` | Controle des lignes (champs `fournisseur_id`, `date_reception`, `reference_bl_fournisseur` avant le fichier) |
+| POST | `/imports/receptions` | `stock:receptionner` | Cree une reception unique avec les lignes valides |
 
 ## Capacite predictive et achats
 | Methode | Route | Permission | Objet |
@@ -83,7 +99,8 @@ restent accessibles.
 | Methode | Route | Permission | Objet |
 |---|---|---|---|
 | GET / POST / PATCH | `/clients` … | `client:lire` / `client:ecrire` | Fiches clients, plafond, blocage |
-| GET | `/clients/:id/encours` | `client:lire` | Encours facture, livre non facture, echu |
+| GET | `/clients/:id/encours` | `client:lire` | Encours facture, livre non facture, echu, avoir disponible |
+| GET | `/clients/:id/releve` | `client:lire` | Releve de compte : factures, encaissements, impayes, solde progressif, factures restant dues, totaux et solde restant du |
 | GET | `/ventes` `/ventes/:id` | `vente:lire` | Documents, lignes, reglements, pieces liees |
 | GET | `/ventes/lots-disponibles/:articleId` | `vente:lire` | Lots de PF expediables (FEFO) |
 | POST | `/ventes` | `vente:ecrire` | Creation (`valider: true` pour valider dans la foulee) |
@@ -99,8 +116,9 @@ requete avec `deblocage: { email, mot_de_passe, motif }` d'un administrateur.
 |---|---|---|---|
 | GET | `/recouvrement/balance-agee` | `recouvrement:lire` | Creances par tranche de retard |
 | GET | `/recouvrement/tableau-de-bord` | `recouvrement:lire` | Balance, cheques, encaissements du mois, clients a risque |
-| GET / POST | `/recouvrement/encaissements` | `encaissement:lire` / `ecrire` | Multi-affectation, paiements partiels |
-| POST | `/recouvrement/encaissements/:id/cheque` | `encaissement:ecrire` | Cycle de vie du cheque (un impaye annule l'apurement) |
+| GET / POST | `/recouvrement/encaissements` | `encaissement:lire` / `ecrire` | Multi-affectation, paiements partiels. Le montant non ventile est impute automatiquement sur les factures les plus anciennes, l'excedent reste en avoir (`imputations_automatiques`) |
+| POST | `/recouvrement/encaissements/:id/cheque` | `encaissement:ecrire` | Cycle de vie du cheque (un impaye annule les imputations, une representation les reconstitue) |
+| GET | `/recouvrement/releve/:clientId` | `recouvrement:lire` | Releve de compte du client |
 | GET | `/recouvrement/factures-ouvertes/:clientId` | `encaissement:lire` | Factures a apurer |
 
 ## Depenses, personnel, analytique
@@ -125,6 +143,7 @@ requete avec `deblocage: { email, mot_de_passe, motif }` d'un administrateur.
 | GET | `/documents/of/:id/bon-de-pesee` | `production:lire` | PDF (ou `?format=html`) |
 | GET | `/documents/of/:id/dossier-de-lot` | `production:lire` | Fiche suiveuse complete |
 | GET | `/documents/ventes/:id` | `vente:lire` | Devis, BC, BL (lots mentionnes), facture |
+| GET | `/documents/clients/:id/releve` | `client:lire` | Releve de compte client imprimable |
 | GET | `/documents/lots/:id/etiquette` | `stock:lire` | Etiquette avec code-barres Code 128 |
 | GET | `/documents/commandes-achat/:id` | `achat:lire` | Bon de commande fournisseur |
 | GET | `/documents/journal-audit` | `*` | Journal d'audit filtrable |

@@ -94,6 +94,48 @@ export const api = {
     return donnees;
   },
 
+  /** Telecharge un fichier produit par l'API (modele Excel...) sous le nom donne. */
+  async telecharger(url: string, nomFichier: string): Promise<void> {
+    const reponse = await fetch(url.startsWith('/api') ? url : `/api${url}`, {
+      headers: { Authorization: `Bearer ${jetonCourant() ?? ''}` },
+    });
+    if (!reponse.ok) {
+      const donnees = await reponse.json().catch(() => ({}));
+      throw new ExceptionApi({ erreur: donnees?.erreur ?? 'ERREUR', message: donnees?.message ?? 'Telechargement impossible.', statut: reponse.status });
+    }
+    const lien = URL.createObjectURL(await reponse.blob());
+    const a = document.createElement('a');
+    a.href = lien;
+    a.download = nomFichier;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(lien), 10_000);
+  },
+
+  /**
+   * Envoie un fichier accompagne de champs de formulaire. Les champs sont
+   * places avant le fichier : le serveur les lit avec lui.
+   */
+  async envoyerFichier<T = any>(url: string, fichier: File, champs: Record<string, string> = {}): Promise<T> {
+    const formulaire = new FormData();
+    for (const [cle, valeur] of Object.entries(champs)) if (valeur !== '') formulaire.append(cle, valeur);
+    formulaire.append('fichier', fichier);
+    const reponse = await fetch(url.startsWith('/api') ? url : `/api${url}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${jetonCourant() ?? ''}` },
+      body: formulaire,
+    });
+    const donnees = await reponse.json().catch(() => ({}));
+    if (!reponse.ok) {
+      throw new ExceptionApi({
+        erreur: donnees?.erreur ?? 'ERREUR', message: donnees?.message ?? `Erreur HTTP ${reponse.status}`,
+        details: donnees?.details, statut: reponse.status,
+      });
+    }
+    return donnees as T;
+  },
+
   /** Ouvre un document imprimable (PDF) dans un nouvel onglet. */
   async ouvrirDocument(url: string): Promise<void> {
     const reponse = await fetch(url.startsWith('/api') ? url : `/api${url}`, {

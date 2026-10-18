@@ -8,7 +8,10 @@ recouvrement et comptabilite analytique jusqu'au cout de revient unitaire reel.
 
 Le perimetre fonctionnel couvre les quatre jalons du cahier des charges
 (`docs/CDCF.md`) et les six scenarios de recette sont automatises
-(`backend/tests/recette.test.ts`).
+(`backend/tests/recette.test.ts`). Les evolutions V2 — imports Excel, modification
+tracee des articles, certificat facultatif, ajustements de stock, reintroduction
+des lots rejetes, imputation automatique des encaissements et releve client —
+sont decrites dans `docs/CDCF-V2.md` et verifiees par `backend/tests/v2.test.ts`.
 
 ---
 
@@ -101,7 +104,7 @@ une installation de production.**
 ## 4. Tests
 
 ```bash
-npm test            # 44 tests : installation, recette fonctionnelle, regles metier, unitaires
+npm test            # 57 tests : installation, recette fonctionnelle, criteres V2, regles metier, unitaires
 ```
 
 Le jeu de fichiers copie dans l'image backend se verifie sans construire
@@ -136,7 +139,7 @@ Detail des scenarios de recette : `docs/RECETTE.md`.
 | Cloture d'OF impossible sans pesees completes | Trigger `fn_controle_cloture_of` + verification applicative |
 | Consommation reservee aux lots conformes | Triggers `fn_mouvement_lot_conforme`, `fn_pesee_lot_valide` + filtrage FEFO de l'ecran de pesee |
 | Mot de passe initial a usage unique | Changement impose a la premiere connexion, refus serveur de tout acces metier avant (`MOT_DE_PASSE_A_CHANGER`) |
-| Certificat d'analyse obligatoire a la reception | Refus API sans CoA ni motif ; trigger `fn_liberation_exige_coa` interdisant de declarer conforme un lot MP/AC sans document joint |
+| Encaissement toujours impute au compte client | Imputation automatique FIFO, avoir conserve et re-impute ; imputations d'un cheque impaye annulees, jamais supprimees |
 
 ## 6. Organisation du depot
 

@@ -363,3 +363,49 @@ export function modeleCommandeAchat(commande: any): string {
     <p class="mention">Quantites calculees par le moteur de capacite predictive pour couvrir le volume cible de production.</p>`;
   return layout(`BON DE COMMANDE ${commande.numero}`, `${echapper(commande.fournisseur ?? '')}`, corps, commande.numero);
 }
+
+// ---------------------------------------------------------------------
+// Releve de compte client (etat client)
+// ---------------------------------------------------------------------
+export function modeleReleveClient(releve: any): string {
+  const lignes = releve.lignes.length
+    ? releve.lignes.map((l: any) => `<tr>
+        <td>${dateFr(l.date)}</td>
+        <td>${echapper(l.libelle)}${l.date_echeance ? `<br><span class="societe">Echeance ${dateFr(l.date_echeance)}</span>` : ''}</td>
+        <td class="num">${Number(l.debit) ? montant(l.debit) : ''}</td>
+        <td class="num">${Number(l.credit) ? montant(l.credit) : ''}</td>
+        <td class="num"><strong>${montant(l.solde)}</strong></td>
+      </tr>`).join('')
+    : '<tr><td colspan="5">Aucune operation.</td></tr>';
+  const ouvertes = releve.factures_ouvertes.length
+    ? releve.factures_ouvertes.map((f: any) => `<tr>
+        <td>${echapper(f.numero_piece)}</td><td>${dateFr(f.date_doc)}</td><td>${dateFr(f.date_echeance)}</td>
+        <td class="num">${montant(f.total_ttc)}</td><td class="num">${montant(f.montant_paye)}</td>
+        <td class="num"><strong>${montant(f.solde_du)}</strong></td>
+        <td>${f.jours_retard > 0 ? `${f.jours_retard} j` : '—'}</td></tr>`).join('')
+    : '<tr><td colspan="7">Aucune facture ouverte.</td></tr>';
+  const t = releve.totaux;
+  const corps = `
+    <div class="grille" style="margin-top:12px">
+      <div class="carte"><div class="libelle">Client</div><div class="valeur">${echapper(releve.client.raison_sociale)}</div>
+        <div class="societe">${echapper(releve.client.code)}<br>${echapper(releve.client.adresse_facturation ?? '')}</div></div>
+      <div class="carte"><div class="libelle">Total facture</div><div class="valeur">${montant(t.total_facture)}</div></div>
+      <div class="carte"><div class="libelle">Total encaisse</div><div class="valeur">${montant(t.total_encaisse)}</div>
+        ${Number(t.total_impaye) ? `<div class="societe">dont impayes : ${montant(t.total_impaye)}</div>` : ''}</div>
+      <div class="carte"><div class="libelle">Solde restant du</div><div class="valeur">${montant(t.solde_restant_du)}</div>
+        ${Number(t.avoir_disponible) ? `<div class="societe">avoir non impute : ${montant(t.avoir_disponible)}</div>` : ''}</div>
+    </div>
+    <h2>Operations</h2>
+    <table>
+      <thead><tr><th>Date</th><th>Libelle</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Solde</th></tr></thead>
+      <tbody>${lignes}</tbody>
+    </table>
+    <h2>Factures restant dues</h2>
+    <table>
+      <thead><tr><th>Facture</th><th>Date</th><th>Echeance</th><th class="num">TTC</th><th class="num">Regle</th><th class="num">Reste du</th><th>Retard</th></tr></thead>
+      <tbody>${ouvertes}</tbody>
+    </table>
+    ${Number(t.livre_non_facture) ? `<p class="mention">Livraisons non encore facturees : ${montant(t.livre_non_facture)}.</p>` : ''}
+    <p class="mention">Releve arrete au ${dateFr(new Date().toISOString())}. Merci de nous signaler toute divergence.</p>`;
+  return layout(`RELEVE DE COMPTE ${releve.client.code}`, `${echapper(releve.client.raison_sociale)}`, corps, `releve-${releve.client.code}`);
+}

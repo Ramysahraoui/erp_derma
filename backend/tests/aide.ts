@@ -154,3 +154,33 @@ export async function cycleProductionComplet(
     dossier: dossier.corps,
   };
 }
+
+/** Envoi multipart (fichier + champs de formulaire), comme le navigateur. */
+export async function envoyerFichier(
+  ctx: Contexte,
+  role: keyof typeof COMPTES,
+  url: string,
+  contenu: Buffer,
+  nomFichier: string,
+  champs: Record<string, string> = {},
+): Promise<Reponse> {
+  const frontiere = `----erp${Date.now().toString(16)}`;
+  const morceaux: Buffer[] = [];
+  // Les champs precedent le fichier : ils sont alors lisibles avec lui.
+  for (const [cle, valeur] of Object.entries(champs)) {
+    morceaux.push(Buffer.from(`--${frontiere}\r\nContent-Disposition: form-data; name="${cle}"\r\n\r\n${valeur}\r\n`));
+  }
+  morceaux.push(Buffer.from(
+    `--${frontiere}\r\nContent-Disposition: form-data; name="fichier"; filename="${nomFichier}"\r\n` +
+    'Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n',
+  ));
+  morceaux.push(contenu, Buffer.from(`\r\n--${frontiere}--\r\n`));
+  const rep = await ctx.app.inject({
+    method: 'POST', url,
+    headers: { authorization: `Bearer ${ctx.jetons[role]}`, 'content-type': `multipart/form-data; boundary=${frontiere}` },
+    payload: Buffer.concat(morceaux),
+  });
+  let corps: any;
+  try { corps = rep.json(); } catch { corps = rep.body; }
+  return { statut: rep.statusCode, corps };
+}

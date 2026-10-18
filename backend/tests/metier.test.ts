@@ -122,49 +122,23 @@ describe('Regles metier industrielles', () => {
     assert.ok(cycle.lot_pf_id);
   });
 
-  test("certificat d'analyse obligatoire : reception motivee et liberation bloquee", async () => {
+  test("certificat de conformite facultatif : reception et liberation sans document, ajout ulterieur", async () => {
     const article = await idArticle(ctx, 'MP-GOM-010');
-
-    // 1. Une reception sans CoA ni motif est refusee.
-    const sansRien = await api(ctx, 'qualite', 'POST', '/api/receptions', {
+    const reception = await api(ctx, 'qualite', 'POST', '/api/receptions', {
       lignes: [{ article_id: article, quantite: 5, code_lot_fournisseur: 'XAN-SANS-COA', prix_achat_unitaire: 2100 }],
     });
-    assert.equal(sansRien.statut, 422);
-    assert.equal(sansRien.corps.erreur, 'COA_MANQUANT');
+    assert.equal(reception.statut, 201, 'ni certificat ni motif exiges');
+    const lotId = reception.corps.lots[0].id;
+    assert.equal(reception.corps.lots[0].statut, 'QUARANTAINE');
 
-    // 2. Avec un motif, la reception passe mais le lot reste en quarantaine
-    //    meme si l'operateur demande le statut conforme.
-    const motivee = await api(ctx, 'qualite', 'POST', '/api/receptions', {
-      lignes: [{
-        article_id: article, quantite: 5, code_lot_fournisseur: 'XAN-ATTENTE', prix_achat_unitaire: 2100,
-        statut: 'CONFORME', coa_absent_motif: 'Certificat annonce par le fournisseur sous 48 heures',
-      }],
-    });
-    assert.equal(motivee.statut, 201);
-    const lotId = motivee.corps.lots[0].id;
-    assert.equal(motivee.corps.lots[0].statut, 'QUARANTAINE');
+    const liberation = await api(ctx, 'qualite', 'POST', `/api/lots/${lotId}/statut`, { statut: 'CONFORME', motif: 'Controle conforme' });
+    assert.equal(liberation.statut, 200);
+    // La base ne bloque plus non plus la liberation.
+    await pool.query("UPDATE lots_stock SET statut = 'BLOQUE' WHERE id = $1", [lotId]);
+    await pool.query("UPDATE lots_stock SET statut = 'CONFORME' WHERE id = $1", [lotId]);
 
-    // 3. La liberation est refusee tant que le document n'est pas joint.
-    const liberation = await api(ctx, 'qualite', 'POST', `/api/lots/${lotId}/statut`, {
-      statut: 'CONFORME', motif: 'Tentative sans certificat',
-    });
-    assert.equal(liberation.statut, 422);
-    assert.equal(liberation.corps.erreur, 'COA_MANQUANT');
-
-    // La base refuse egalement la liberation par SQL direct.
-    await assert.rejects(
-      () => pool.query("UPDATE lots_stock SET statut = 'CONFORME' WHERE id = $1", [lotId]),
-      /COA_MANQUANT/,
-    );
-
-    // 4. Une fois le certificat depose, la liberation est possible.
-    const depot = await api(ctx, 'qualite', 'POST', `/api/lots/${lotId}/coa`, { coa_fichier: 'coa-xan-attente.pdf' });
+    const depot = await api(ctx, 'qualite', 'POST', `/api/lots/${lotId}/coa`, { coa_fichier: 'coa-xan.pdf' });
     assert.equal(depot.statut, 200);
-    const apres = await api(ctx, 'qualite', 'POST', `/api/lots/${lotId}/statut`, {
-      statut: 'CONFORME', motif: 'Certificat recu et conforme',
-    });
-    assert.equal(apres.statut, 200);
-    assert.equal(apres.corps.statut, 'CONFORME');
   });
 
   test("lot de produit fini impossible sans lot de vrac libere", async () => {

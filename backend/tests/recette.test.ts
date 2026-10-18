@@ -167,17 +167,10 @@ describe('Recette fonctionnelle — criteres d acceptation du CDCF', () => {
     });
     assert.equal(tentative.statut, 403);
 
-    // 5. La liberation exige le certificat d'analyse, absent a la reception.
-    const sansCoa = await api(ctx, 'qualite', 'POST', `/api/lots/${lotQuarantaine.id}/statut`, {
-      statut: 'CONFORME', motif: 'Liberation anticipee',
-    });
-    assert.equal(sansCoa.statut, 422);
-    assert.equal(sansCoa.corps.erreur, 'COA_MANQUANT');
-
-    // 6. Certificat depose puis liberation : le lot devient utilisable.
-    await api(ctx, 'qualite', 'POST', `/api/lots/${lotQuarantaine.id}/coa`, { coa_fichier: 'coa-gly-7802.pdf' });
+    // 5. Apres liberation par la qualite (certificat facultatif depuis la V2),
+    //    le meme lot devient utilisable.
     const liberation = await api(ctx, 'qualite', 'POST', `/api/lots/${lotQuarantaine.id}/statut`, {
-      statut: 'CONFORME', motif: 'Certificat d analyse conforme recu',
+      statut: 'CONFORME', motif: 'Controle de reception conforme',
     });
     assert.equal(liberation.statut, 200);
     const apres = await api(ctx, 'atelier', 'GET', `/api/of/${ofId}/lignes/${ligne.id}/lots`);

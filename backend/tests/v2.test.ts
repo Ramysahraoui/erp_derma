@@ -175,26 +175,32 @@ describe('V2 — critere 2 : code, disponibilite et prix de vente modifiables et
 });
 
 describe('V2 — critere 3 : reception par Excel sans certificat de conformite', () => {
-  const ENTETES = ['code_sku', 'quantite', 'lot_fournisseur', 'dluo', 'prix_achat_unitaire',
+  const ENTETES = ['code_sku', 'quantite_kg', 'quantite_unites', 'lot_fournisseur', 'dluo', 'prix_achat_unitaire',
     'frais_approche_unitaire', 'emplacement', 'statut'];
 
   test('reception importee, lots crees sans certificat, rejets motives', async () => {
     const fournisseur = (await api(ctx, 'qualite', 'GET', '/api/fournisseurs')).corps[0];
     const fichier = await classeur(ENTETES, [
-      ['MP-EAU-001', '250,5', 'EAU-XL-01', new Date(Date.UTC(2029, 0, 31)), 36, 1.5, 'Magasin A', 'quarantaine'],
-      ['AC-FLA-050', 1000, 'FL-XL-01', null, 61, null, null, 'conforme'],
-      ['mp-gly-002', 40, 'GLY-XL-01', '15/03/2029', '440', null, null, null],
-      ['MP-INCONNU', 10, 'X-1', null, 10, null, null, null],
-      ['PF-CRH-050', 10, 'X-2', null, 10, null, null, null],
-      ['MP-EAU-001', 0, 'EAU-XL-02', null, 36, null, null, null],
-      ['MP-EAU-001', 10, 'EAU-XL-03', '31/02/2029', 36, null, null, null],
-      ['MP-EAU-001', 10, 'EAU-XL-04', '01/01/2020', 36, null, null, null],
-      ['MP-EAU-001', 10, 'EAU-XL-01', null, 36, null, null, null],
-      ['MP-EAU-001', 10, null, null, 36, null, null, null],
+      ['MP-EAU-001', '250,5', null, 'EAU-XL-01', new Date(Date.UTC(2029, 0, 31)), 36, 1.5, 'Magasin A', 'quarantaine'],
+      ['AC-FLA-050', null, 1000, 'FL-XL-01', null, 61, null, null, 'conforme'],
+      ['mp-gly-002', 40, null, 'GLY-XL-01', '15/03/2029', '440', null, null, null],
+      ['MP-INCONNU', 10, null, 'X-1', null, 10, null, null, null],
+      ['PF-CRH-050', null, 10, 'X-2', null, 10, null, null, null],
+      ['MP-EAU-001', 0, null, 'EAU-XL-02', null, 36, null, null, null],
+      ['MP-EAU-001', 10, null, 'EAU-XL-03', '31/02/2029', 36, null, null, null],
+      ['MP-EAU-001', 10, null, 'EAU-XL-04', '01/01/2020', 36, null, null, null],
+      ['MP-EAU-001', 10, null, 'EAU-XL-01', null, 36, null, null, null],
+      ['MP-EAU-001', 10, null, null, null, 36, null, null, null],
+      // Huile de jojoba geree en litres (masse volumique 0,87) : 87 kg = 100 L.
+      ['MP-HUJ-003', 87, null, 'HUJ-XL-01', null, 870, 8.7, null, null],
+      ['MP-EAU-001', null, 10, 'EAU-XL-05', null, 36, null, null, null],
+      ['AC-FLA-050', 12, null, 'FL-XL-02', null, 61, null, null, null],
+      ['AC-FLA-050', null, '10,5', 'FL-XL-03', null, 61, null, null, null],
+      ['MP-EAU-001', null, null, 'EAU-XL-06', null, 36, null, null, null],
     ]);
     const apercu = await envoyerFichier(ctx, 'qualite', '/api/imports/receptions/apercu', fichier, 'reception.xlsx');
     assert.equal(apercu.statut, 200, JSON.stringify(apercu.corps));
-    assert.deepEqual(apercu.corps.resume, { total: 10, valides: 3, rejetees: 7 });
+    assert.deepEqual(apercu.corps.resume, { total: 15, valides: 4, rejetees: 11 });
     const motifs = (ligne: number) => apercu.corps.lignes.find((l: any) => l.numero === ligne).erreurs.join(' | ');
     assert.match(motifs(6), /inconnu/);
     assert.match(motifs(7), /produit fini/);
@@ -203,16 +209,21 @@ describe('V2 — critere 3 : reception par Excel sans certificat de conformite',
     assert.match(motifs(10), /deja depassee/);
     assert.match(motifs(11), /en double dans le fichier/);
     assert.match(motifs(12), /lot fournisseur : champ obligatoire vide/i);
+    assert.deepEqual(motifs(13), '', 'conversion kg -> litres via la masse volumique');
+    assert.match(motifs(14), /matiere premiere : saisir la quantite en kilogrammes/);
+    assert.match(motifs(15), /article de conditionnement : saisir un nombre d'unites/);
+    assert.match(motifs(16), /pas un nombre entier/);
+    assert.match(motifs(17), /Quantite \(kg\) : champ obligatoire vide/);
 
     const rep = await envoyerFichier(ctx, 'qualite', '/api/imports/receptions', fichier, 'reception.xlsx', {
       fournisseur_id: String(fournisseur.id), reference_bl_fournisseur: 'BL-XL-2026-01',
     });
     assert.equal(rep.statut, 200, JSON.stringify(rep.corps));
-    assert.equal(rep.corps.importees, 3);
-    assert.equal(rep.corps.rejetees, 7);
+    assert.equal(rep.corps.importees, 4);
+    assert.equal(rep.corps.rejetees, 11);
     assert.equal(rep.corps.reception.reference_bl_fournisseur, 'BL-XL-2026-01');
     assert.equal(rep.corps.reception.fournisseur_id, fournisseur.id);
-    assert.equal(rep.corps.lots.length, 3);
+    assert.equal(rep.corps.lots.length, 4);
     assert.ok(rep.corps.lots.every((l: any) => l.coa_fichier === null), 'aucun certificat exige');
 
     const eau = rep.corps.lots.find((l: any) => l.code_sku === 'MP-EAU-001');
@@ -220,6 +231,10 @@ describe('V2 — critere 3 : reception par Excel sans certificat de conformite',
     assert.equal(eau.dluo.slice(0, 10), '2029-01-31');
     assert.equal(eau.statut, 'QUARANTAINE');
     assert.equal(rep.corps.lots.find((l: any) => l.code_sku === 'AC-FLA-050').statut, 'CONFORME');
+    const huile = rep.corps.lots.find((l: any) => l.code_sku === 'MP-HUJ-003');
+    assert.equal(Number(huile.qte_actuelle), 100, '87 kg / 0,87 kg/L = 100 L');
+    assert.equal(Number(huile.prix_achat_unitaire), 756.9, '870 DZD/kg x 0,87 kg/L = 756,90 DZD/L');
+    assert.equal(Number(huile.frais_approche_unitaire), 7.569);
 
     // Liberation possible sans certificat, certificat joint ensuite.
     const liberation = await api(ctx, 'qualite', 'POST', `/api/lots/${eau.id}/statut`, {
@@ -231,9 +246,20 @@ describe('V2 — critere 3 : reception par Excel sans certificat de conformite',
     assert.equal(depot.corps.coa_fichier, 'coa-eau-xl-01.pdf');
   });
 
+  test('un fichier rempli sur l ancien modele (quantite sans unite) est refuse', async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Reception');
+    ws.addRow(['code_sku', 'quantite', 'lot_fournisseur', 'prix_achat_unitaire']);
+    ws.addRow(['MP-EAU-001', 10, 'EAU-OLD-1', 36]);
+    const fichier = Buffer.from(await wb.xlsx.writeBuffer());
+    const apercu = await envoyerFichier(ctx, 'qualite', '/api/imports/receptions/apercu', fichier, 'ancien.xlsx');
+    assert.equal(apercu.corps.resume.valides, 0);
+    assert.match(apercu.corps.lignes[0].erreurs.join(' '), /Ancien modele/);
+  });
+
   test('un fichier entierement invalide ne cree aucune reception', async () => {
     const avant = (await pool.query('SELECT COUNT(*)::int AS n FROM receptions')).rows[0].n;
-    const fichier = await classeur(ENTETES, [['MP-INCONNU', 10, 'X', null, 1, null, null, null]]);
+    const fichier = await classeur(ENTETES, [['MP-INCONNU', 10, null, 'X', null, 1, null, null, null]]);
     const rep = await envoyerFichier(ctx, 'qualite', '/api/imports/receptions', fichier, 'reception.xlsx');
     assert.equal(rep.corps.importees, 0);
     assert.equal(rep.corps.reception, null);

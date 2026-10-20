@@ -230,11 +230,16 @@ function ImportReception({ onFermer, onTermine }: { onFermer: () => void; onTerm
       nomModele="modele-import-reception.xlsx"
       champs={entete}
       colonnes={[
-        { cle: 'code_sku', libelle: 'Article' }, { cle: 'quantite', libelle: 'Quantite' },
+        { cle: 'code_sku', libelle: 'Article' },
+        { cle: 'quantite_kg', libelle: 'Quantite (kg)' }, { cle: 'quantite_unites', libelle: 'Quantite (unites)' },
+        { cle: 'entree', libelle: 'Entree en stock',
+          valeur: (l) => (l.donnees ? <strong>{fmtNombre(l.donnees.quantite, l.donnees.unite === 'U' ? 0 : 3)} {l.donnees.unite}</strong> : null) },
         { cle: 'lot_fournisseur', libelle: 'Lot fournisseur' }, { cle: 'dluo', libelle: 'DLUO' },
         { cle: 'prix_achat_unitaire', libelle: 'Prix achat' }, { cle: 'statut', libelle: 'Statut' },
       ]}
-      explication={<>Une ligne par lot recu. Les lignes valides forment une seule reception, avec un numero de lot
+      explication={<>Une ligne par lot recu. Matieres premieres : quantite et prix au kilogramme (converties
+        automatiquement si l'article est gere en g, L ou ml). Articles de conditionnement : nombre d'unites et prix
+        unitaire. Les lignes valides forment une seule reception, avec un numero de lot
         interne par ligne. Le certificat de conformite n'est pas demande : il se joint ensuite depuis la fiche
         de chaque lot.</>}
       champsSaisie={

@@ -4,7 +4,7 @@ Les six scenarios du cahier des charges sont automatises et rejoues a chaque
 execution de la suite de tests.
 
 ```bash
-npm test          # 62 tests, dont les 6 scenarios de recette et les 5 criteres V2
+npm test          # 63 tests, dont les 6 scenarios de recette et les 5 criteres V2
 ```
 
 La suite recree integralement la base de test, applique les migrations, injecte
@@ -149,7 +149,7 @@ les lots de PF generes et la liste nominative des clients livres.
 |---|---|
 | 1. Import de plusieurs articles | Modele telechargeable aux colonnes attendues ; apercu sans ecriture ; doublon referentiel, doublon fichier, champ obligatoire vide, format invalide et regle de categorie rejetes avec motif ; lignes valides creees ; fichier non Excel refuse ; operateur d'atelier refuse (403) |
 | 2. Modification tracee | Code, disponibilite et prix modifies avec ancienne / nouvelle valeur, utilisateur et date ; lots, mouvements et documents toujours rattaches sous le nouveau code ; code deja attribue refuse (409) ; produit inactif non vendable |
-| 3. Reception par Excel | Reception creee sans certificat, lots liberables, certificat joint ensuite ; article inconnu, produit fini, quantite nulle, date invalide, lot en double rejetes ; fichier entierement invalide sans effet |
+| 3. Reception par Excel | Reception creee sans certificat, lots liberables, certificat joint ensuite ; quantites saisies en kilogrammes (MP) ou en unites (AC), converties dans l'unite de stock (87 kg d'huile a 0,87 kg/L = 100 L, prix ramene au litre) ; article inconnu, produit fini, quantite nulle, MP saisie en unites, AC saisi en kg, nombre d'unites non entier, date invalide, lot en double rejetes ; fichier de l'ancien modele refuse ; fichier entierement invalide sans effet |
 | 4. Ajustements et lots rejetes | Augmentation et reduction tracees comme mouvements (utilisateur, motif) ; reduction excessive refusee ; sortie de `REJETE` par la voie normale refusee ; reintroduction motivee, rejet conserve dans l'historique |
 | 5. Encaissement et etat client | Encaissement sans ventilation impute sur la facture la plus ancienne, excedent en avoir impute sur la facture suivante ; releve (factures, encaissements, solde progressif) exact ; cheque impaye puis represente sans double compte ni recredit ; paiement avant facturation reduisant l'encours au regard du plafond |
 

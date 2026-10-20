@@ -24,8 +24,9 @@ await remplir(await modeleArticles(), [
   ['MP-E2E-002', null, 'MP', 'kg', null, null, null, null, null, null, null],
 ], `${dossier}/articles.xlsx`);
 await remplir(await modeleReception(), [
-  ['MP-EAU-001', 300, 'EAU-E2E-01', '30/06/2029', 36, 2, 'Magasin A', 'quarantaine'],
-  ['AC-FLA-050', 1500, 'FL-E2E-01', null, 62, null, null, 'conforme'],
-  ['MP-INCONNU', 10, 'X-1', null, 10, null, null, null],
+  ['MP-EAU-001', 300, null, 'EAU-E2E-01', '30/06/2029', 36, 2, 'Magasin A', 'quarantaine'],
+  ['AC-FLA-050', null, 1500, 'FL-E2E-01', null, 62, null, null, 'conforme'],
+  ['MP-HUJ-003', 87, null, 'HUJ-E2E-01', null, 870, null, null, null],
+  ['MP-INCONNU', 10, null, 'X-1', null, 10, null, null, null],
 ], `${dossier}/reception.xlsx`);
 console.log('fixtures ecrites');

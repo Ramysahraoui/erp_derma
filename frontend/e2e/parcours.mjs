@@ -174,7 +174,11 @@ await etape('V2 reception par Excel sans certificat de conformite', async () => 
   await page.waitForSelector('.modale');
   await page.setInputFiles('.modale input[type=file]', fixture('reception.xlsx'));
   await page.waitForFunction(() => /lignes lues/i.test(document.body.innerText), null, { timeout: 10000 });
-  await page.click('.modale button:has-text("Importer 2 ligne")');
+  // Quantites saisies en kg : l'huile de jojoba, geree en litres, est convertie (87 kg = 100 L).
+  const apercu = (await page.innerText('.modale')).replace(/[\u00a0\u202f]/g, ' ');
+  if (!/Quantite \(kg\)/i.test(apercu)) throw new Error('colonne en kilogrammes absente');
+  if (!apercu.includes('100,000 L') || !apercu.includes('300,000 kg')) throw new Error('conversion en unite de stock absente');
+  await page.click('.modale button:has-text("Importer 3 ligne")');
   await page.waitForFunction(() => /compte rendu d.import/i.test(document.body.innerText), null, { timeout: 10000 });
   if (!/inconnu/i.test(await page.innerText('.modale'))) throw new Error('motif de rejet absent');
   await page.click('.modale footer button:has-text("Fermer")');

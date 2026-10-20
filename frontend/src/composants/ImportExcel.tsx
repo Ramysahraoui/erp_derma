@@ -2,7 +2,9 @@ import { useState, type ReactNode } from 'react';
 import { api } from '../api';
 import { Alerte, AlerteErreur, Badge, Indicateur, Modale } from './Ui';
 
-interface LigneApercu { numero: number; valeurs: Record<string, string | null>; erreurs: string[] }
+interface LigneApercu { numero: number; valeurs: Record<string, string | null>; erreurs: string[]; donnees?: any }
+/** Colonne de l'apercu : valeur lue dans le fichier, ou calculee par le serveur (`valeur`). */
+export interface ColonneApercu { cle: string; libelle: string; valeur?: (ligne: LigneApercu) => ReactNode }
 interface Apercu {
   lignes: LigneApercu[];
   colonnes_inconnues: string[];
@@ -28,7 +30,7 @@ export function ImportExcel({
   titre: string;
   base: string;                       // ex. /imports/articles
   nomModele: string;
-  colonnes: { cle: string; libelle: string }[];
+  colonnes: ColonneApercu[];
   champs?: Record<string, string>;    // champs d'en-tete envoyes avec le fichier
   champsSaisie?: ReactNode;           // formulaire d'en-tete (fournisseur, date...)
   explication: ReactNode;
@@ -151,7 +153,7 @@ export function ImportExcel({
                             ? l.erreurs.map((m, i) => <div key={i} className="secondaire" style={{ color: 'var(--danger)' }}>{m}</div>)
                             : <Badge valeur="VALIDE" classe="succes" />}
                         </td>
-                        {colonnes.map((c) => <td key={c.cle}>{l.valeurs[c.cle] ?? <span className="secondaire">—</span>}</td>)}
+                        {colonnes.map((c) => <td key={c.cle}>{(c.valeur ? c.valeur(l) : l.valeurs[c.cle]) ?? <span className="secondaire">—</span>}</td>)}
                       </tr>
                     ))}
                     {!lignes.length && <tr><td colSpan={colonnes.length + 2} className="vide">Aucune ligne.</td></tr>}

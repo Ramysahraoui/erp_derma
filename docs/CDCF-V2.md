@@ -25,6 +25,9 @@ decisions prises lors de leur mise en oeuvre.
 - Import d'une reception (plusieurs lignes) a partir d'un modele Excel, avec le
   meme cycle modele / apercu / controle / compte rendu. L'entete (fournisseur,
   date, bon de livraison) est saisi dans le formulaire.
+- Quantites du fichier : en **kilogrammes** pour les matieres premieres
+  (colonne `quantite_kg`, prix et frais d'approche au kg), en **nombre
+  d'unites** pour les articles de conditionnement (colonne `quantite_unites`).
 - Le certificat de conformite (CoA) devient **facultatif** : il peut etre joint
   a la reception ou plus tard, sur la fiche du lot.
 
@@ -51,6 +54,7 @@ decisions prises lors de leur mise en oeuvre.
 |---|---|
 | Disponibilite d'un article | Indicateur actif / inactif. Un article inactif n'est plus propose a la saisie (receptions, formules, ventes) et ne peut plus etre receptionne ni vendu ; son historique reste consultable. |
 | Certificat de conformite | Entierement facultatif : la liberation d'un lot est possible sans certificat. La fiche lot signale a titre informatif un certificat non joint. |
+| Unite des quantites a l'import de reception | Kilogrammes pour les matieres premieres, unites pour les articles de conditionnement. Une matiere geree en g est convertie (x 1000), une matiere geree en L ou ml est convertie avec la masse volumique de sa fiche (ligne rejetee si elle n'est pas renseignee) ; le prix au kg est ramene a l'unite de stock. |
 | Code deja existant a l'import | La ligne est rejetee (pas de mise a jour implicite d'un article existant). |
 | Encaissement non ventile | Imputation automatique sur les factures les plus anciennes (echeance puis date). L'excedent reste en avoir, impute automatiquement sur les factures validees ensuite. |
 | Cheque impaye | Les imputations du cheque sont annulees (jamais supprimees), les factures sont rouvertes. Un cheque represente redevient un avoir, re-impute selon la meme regle. |
